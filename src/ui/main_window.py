@@ -1,12 +1,17 @@
 
-from PySide6.QtWidgets import QMainWindow, QFileDialog, QWidget, QHBoxLayout, QToolBar
+from PySide6.QtWidgets import (QMainWindow, QFileDialog, QWidget, QHBoxLayout, QToolBar, 
+                              QScrollArea, QVBoxLayout, QScrollBar, QDockWidget)
 from PySide6.QtGui import QAction, QIcon
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from src.ui.piano_roll_widget import PianoRollWidget
-from src.ui.piano_keyboard_widget import PianoKeyboardWidget
+from src.ui.status_bar import PyDominoStatusBar
+from src.ui.compact_tempo_widget import (CompactTempoWidget, CompactTimeSignatureWidget, 
+                                       CompactMusicInfoWidget, CompactPlaybackInfoWidget, 
+                                       ToolbarSeparator)
 from src.midi_parser import load_midi_file
 from src.edit_modes import EditMode
 from src.audio_system import initialize_audio_manager, cleanup_audio_manager, AudioSettings
+from src.playback_engine import initialize_playback_engine, cleanup_playback_engine, get_playback_engine, PlaybackState
 
 class PyDominoMainWindow(QMainWindow):
     def __init__(self):
@@ -20,21 +25,59 @@ class PyDominoMainWindow(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0) # Remove margins
         main_layout.setSpacing(0) # Remove spacing between widgets
 
-        # Piano Keyboard Widget
-        self.piano_keyboard = PianoKeyboardWidget(pixels_per_pitch=10) # Pass pixels_per_pitch
-        main_layout.addWidget(self.piano_keyboard)
+        # Remove the piano keyboard widget - we'll use the built-in one in piano roll
 
-        # Piano Roll Widget
+        # Piano Roll Widget with custom scrollbars
         self.piano_roll = PianoRollWidget()
-        main_layout.addWidget(self.piano_roll)
+        
+        # Create container widget with scrollbars
+        piano_roll_container = QWidget()
+        piano_roll_layout = QVBoxLayout(piano_roll_container)
+        piano_roll_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Horizontal layout for piano roll and vertical scrollbar
+        h_layout = QHBoxLayout()
+        h_layout.setContentsMargins(0, 0, 0, 0)
+        h_layout.addWidget(self.piano_roll)
+        
+        # Vertical scrollbar
+        self.v_scrollbar = QScrollBar(Qt.Vertical)
+        self.v_scrollbar.setMinimum(0)
+        self.v_scrollbar.setMaximum(118)  # 128 notes - 10 visible notes
+        self.v_scrollbar.setValue(0)
+        self.v_scrollbar.valueChanged.connect(self._on_vertical_scroll)
+        h_layout.addWidget(self.v_scrollbar)
+        
+        piano_roll_layout.addLayout(h_layout)
+        
+        # Horizontal scrollbar
+        self.h_scrollbar = QScrollBar(Qt.Horizontal)
+        self.h_scrollbar.setMinimum(0)
+        self.h_scrollbar.setMaximum(32000)  # Large value for wide scrolling
+        self.h_scrollbar.setValue(0)
+        self.h_scrollbar.valueChanged.connect(self._on_horizontal_scroll)
+        piano_roll_layout.addWidget(self.h_scrollbar)
+        
+        main_layout.addWidget(piano_roll_container)
+        
+        # Connect scrollbars to piano roll widget
+        self.piano_roll.h_scrollbar = self.h_scrollbar
+        self.piano_roll.v_scrollbar = self.v_scrollbar
 
         self.setCentralWidget(central_widget)
 
+        # Create status bar (simplified)
+        self.status_bar = PyDominoStatusBar()
+        self.setStatusBar(self.status_bar)
+
         self._create_menu_bar()
         self._create_toolbar()
+        self._create_music_toolbar()
         
-        # Initialize audio system
-        self._initialize_audio_system()
+        # Initialize systems (delayed to ensure QApplication is ready)
+        QTimer.singleShot(50, self._initialize_audio_system)
+        QTimer.singleShot(150, self._initialize_playback_engine)
+        QTimer.singleShot(200, self._connect_ui_signals)
 
     def _create_menu_bar(self):
         menu_bar = self.menuBar()
@@ -81,6 +124,13 @@ class PyDominoMainWindow(QMainWindow):
         select_all_action = edit_menu.addAction("Select &All")
         select_all_action.setShortcut("Ctrl+A")
         select_all_action.triggered.connect(self._select_all)
+        
+        # Settings Menu
+        settings_menu = menu_bar.addMenu("&Settings")
+        
+        preferences_action = settings_menu.addAction("&Preferences...")
+        preferences_action.setShortcut("Ctrl+Comma")
+        preferences_action.triggered.connect(self._open_settings)
 
     def _open_midi_file(self):
         file_dialog = QFileDialog(self)
@@ -94,7 +144,20 @@ class PyDominoMainWindow(QMainWindow):
                 try:
                     midi_project = load_midi_file(file_path)
                     self.piano_roll.set_midi_project(midi_project)
+                    
+                    # Set project in playback engine
+                    engine = get_playback_engine()
+                    if engine:
+                        engine.set_project(midi_project)
+                    
+                    # Update UI with project settings
+                    self._update_project_ui(midi_project)
+                    
+                    # Set project in music info widget
+                    self.music_info_widget.set_project(midi_project)
+                    
                     self.setWindowTitle(f"PyDomino - {file_path}")
+                    self.status_bar.update_project_name(file_path.split('/')[-1])
                 except Exception as e:
                     print(f"Error loading MIDI file: {e}")
                     # TODO: Show error message to user
@@ -123,6 +186,47 @@ class PyDominoMainWindow(QMainWindow):
         """Select all notes"""
         self.piano_roll._select_all()
     
+    def _open_settings(self):
+        """Open settings dialog"""
+        from src.ui.settings_dialog import SettingsDialog
+        
+        dialog = SettingsDialog(self)
+        dialog.settings_applied.connect(self._on_settings_applied)
+        dialog.exec()
+    
+    def _on_settings_applied(self):
+        """Handle settings being applied"""
+        try:
+            # Update piano roll display
+            if hasattr(self, 'piano_roll') and self.piano_roll:
+                self.piano_roll.update_display_settings()
+            
+            # Force update music info widget with current playhead position
+            if (hasattr(self, 'music_info_widget') and self.music_info_widget and 
+                hasattr(self, 'piano_roll') and self.piano_roll and 
+                hasattr(self.piano_roll, 'midi_project') and self.piano_roll.midi_project):
+                
+                # Get notes at current playhead position safely
+                playhead_tick = getattr(self.piano_roll, 'playhead_tick', 0)
+                try:
+                    notes_at_position = self.piano_roll.midi_project.get_notes_at_tick(playhead_tick)
+                    if notes_at_position:
+                        pitches = [note.pitch for note in notes_at_position]
+                        self.music_info_widget.update_notes(pitches)
+                    else:
+                        self.music_info_widget.update_notes([])
+                except Exception as e:
+                    print(f"Error updating music info: {e}")
+                    # Fallback: just clear the display
+                    self.music_info_widget.update_notes([])
+            
+            print("Settings applied - UI components updated")
+            
+        except Exception as e:
+            print(f"Error in settings applied handler: {e}")
+            import traceback
+            traceback.print_exc()
+    
     def _create_toolbar(self):
         """Create the toolbar with mode switching buttons"""
         toolbar = QToolBar("Main Toolbar")
@@ -149,10 +253,29 @@ class PyDominoMainWindow(QMainWindow):
         
         toolbar.addSeparator()
         
-        # Quick access buttons
-        toggle_mode_action = QAction("⇄ Toggle Mode", self)
+        # Playback control buttons
+        self.play_action = QAction("▶️ Play", self)
+        self.play_action.setShortcut("Space")
+        self.play_action.setToolTip("Play/Pause (Space)")
+        self.play_action.triggered.connect(self._toggle_playback)
+        toolbar.addAction(self.play_action)
+        
+        self.stop_action = QAction("⏹️ Stop", self)
+        self.stop_action.setToolTip("Stop Playback")
+        self.stop_action.triggered.connect(self._stop_playback)
+        toolbar.addAction(self.stop_action)
+        
+        self.rewind_action = QAction("⏮️ Rewind", self)
+        self.rewind_action.setToolTip("Return to Beginning")
+        self.rewind_action.triggered.connect(self._rewind_playback)
+        toolbar.addAction(self.rewind_action)
+        
+        # Keep the rest of toolbar actions minimal
+        toolbar.addSeparator()
+        
+        toggle_mode_action = QAction("⇄ Toggle", self)
         toggle_mode_action.setShortcut("Tab")
-        toggle_mode_action.setToolTip("Toggle Mode (Tab)")
+        toggle_mode_action.setToolTip("Toggle Edit Mode (Tab)")
         toggle_mode_action.triggered.connect(self._toggle_mode)
         toolbar.addAction(toggle_mode_action)
         
@@ -223,6 +346,10 @@ class PyDominoMainWindow(QMainWindow):
     
     def closeEvent(self, event):
         """Handle window close event"""
+        # Clean up playback engine
+        cleanup_playback_engine()
+        print("Playback engine cleaned up")
+        
         # Clean up audio system
         cleanup_audio_manager()
         print("Audio system cleaned up")
@@ -244,4 +371,190 @@ class PyDominoMainWindow(QMainWindow):
                 print("Test audio: Failed to play note")
         else:
             print("Test audio: Audio manager not available")
+    
+    def _toggle_playback(self):
+        """Toggle between play and pause"""
+        print("MainWindow: _toggle_playback called")
+        engine = get_playback_engine()
+        if engine:
+            print(f"MainWindow: Found engine, state: {engine.get_state()}")
+            engine.toggle_play_pause()
+            print(f"MainWindow: After toggle, state: {engine.get_state()}")
+            self._update_playback_buttons()
+        else:
+            print("MainWindow: No playback engine found!")
+    
+    def toggle_playback(self):
+        """Public method for external access (like piano roll widget)"""
+        print("MainWindow: toggle_playback called")
+        self._toggle_playback()
+    
+    def update_chord_display(self, chord_info: str):
+        """Update chord display in the top bar"""
+        # Update the music info widget if it exists
+        if hasattr(self, 'music_info_widget') and self.music_info_widget:
+            self.music_info_widget.set_chord_text(chord_info)
+        
+        # Also update status bar as fallback
+        if hasattr(self, 'status_bar') and self.status_bar:
+            self.status_bar.showMessage(chord_info, 3000)  # Show for 3 seconds
+        
+        print(f"Chord Display: {chord_info}")
+    
+    def _stop_playback(self):
+        """Stop playback"""
+        engine = get_playback_engine()
+        if engine:
+            engine.stop()
+            self._update_playback_buttons()
+    
+    def _rewind_playback(self):
+        """Rewind to beginning"""
+        engine = get_playback_engine()
+        if engine:
+            engine.seek_to_beginning()
+            self._update_playback_buttons()
+    
+    def _update_playback_buttons(self):
+        """Update playback button states"""
+        engine = get_playback_engine()
+        if engine:
+            state = engine.get_state()
+            if state == PlaybackState.PLAYING:
+                self.play_action.setText("⏸️ Pause")
+                self.play_action.setToolTip("Pause (Space)")
+            else:
+                self.play_action.setText("▶️ Play")
+                self.play_action.setToolTip("Play (Space)")
+    
+    def _initialize_playback_engine(self):
+        """Initialize the playback engine"""
+        engine = initialize_playback_engine()
+        
+        # Connect to playback state changes
+        engine.state_changed.connect(self._on_playback_state_changed)
+        
+        # Connect piano roll to playback engine
+        self.piano_roll.connect_playback_engine()
+        
+        print("Playback engine initialized")
+    
+    def _on_vertical_scroll(self, value):
+        """Handle vertical scrollbar changes"""
+        # Convert scrollbar value to vertical offset
+        self.piano_roll.vertical_offset = value
+        self.piano_roll.update()
+            
+    def _on_horizontal_scroll(self, value):
+        """Handle horizontal scrollbar changes"""
+        # Convert scrollbar value to horizontal offset in ticks
+        self.piano_roll.horizontal_offset = value * 10  # Scale factor for ticks
+        self.piano_roll.update()
+            
+    def _on_playback_state_changed(self, state: PlaybackState):
+        """Handle playback state changes"""
+        self._update_playback_buttons()
+        print(f"Playback state changed to: {state.value}")
+    
+    def _create_music_toolbar(self):
+        """Create music information and control toolbar"""
+        music_toolbar = QToolBar("Music Controls", self)
+        music_toolbar.setObjectName("MusicToolbar")
+        music_toolbar.setMovable(True)
+        
+        # Tempo control
+        self.tempo_widget = CompactTempoWidget()
+        music_toolbar.addWidget(self.tempo_widget)
+        
+        music_toolbar.addWidget(ToolbarSeparator())
+        
+        # Time signature control
+        self.time_sig_widget = CompactTimeSignatureWidget()
+        music_toolbar.addWidget(self.time_sig_widget)
+        
+        music_toolbar.addWidget(ToolbarSeparator())
+        
+        # Music info display
+        self.music_info_widget = CompactMusicInfoWidget()
+        music_toolbar.addWidget(self.music_info_widget)
+        
+        music_toolbar.addWidget(ToolbarSeparator())
+        
+        # Playback info
+        self.playback_info_widget = CompactPlaybackInfoWidget()
+        music_toolbar.addWidget(self.playback_info_widget)
+        
+        # Add spacer to push everything to the left
+        from PySide6.QtWidgets import QWidget as SpacerWidget
+        from PySide6.QtWidgets import QSizePolicy
+        spacer = SpacerWidget()
+        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        music_toolbar.addWidget(spacer)
+        
+        # Add toolbar to window
+        self.addToolBar(Qt.TopToolBarArea, music_toolbar)
+        
+        # Setup update timer for playback info
+        self.playback_update_timer = QTimer()
+        self.playback_update_timer.timeout.connect(self._update_playback_info)
+        self.playback_update_timer.start(100)  # Update every 100ms
+    
+    def _connect_ui_signals(self):
+        """Connect UI signals after initialization"""
+        # Connect tempo widget to project and playback engine
+        self.tempo_widget.tempo_changed.connect(self._on_tempo_changed)
+        self.time_sig_widget.time_signature_changed.connect(self._on_time_signature_changed)
+        
+        # Connect piano roll selection changes to music info display
+        if hasattr(self.piano_roll, 'selection_changed'):
+            self.piano_roll.selection_changed.connect(self.music_info_widget.update_selected_notes)
+        
+        # Connect piano roll project changes to music info display
+        if hasattr(self.piano_roll, 'project_changed'):
+            self.piano_roll.project_changed.connect(self.music_info_widget.set_project)
+        
+        # Set initial project in music info widget
+        if hasattr(self.piano_roll, 'midi_project') and self.piano_roll.midi_project:
+            self.music_info_widget.set_project(self.piano_roll.midi_project)
+# Debug output removed for cleaner logs
+        
+        print("UI signals connected")
+    
+    def _on_tempo_changed(self, bpm: float):
+        """Handle tempo changes from UI"""
+        # Update the current project
+        if hasattr(self.piano_roll, 'midi_project') and self.piano_roll.midi_project:
+            self.piano_roll.midi_project.set_global_tempo(bpm)
+        
+        print(f"Tempo changed to {bpm} BPM")
+    
+    def _on_time_signature_changed(self, numerator: int, denominator: int):
+        """Handle time signature changes from UI"""
+        # Update the current project
+        if hasattr(self.piano_roll, 'midi_project') and self.piano_roll.midi_project:
+            self.piano_roll.midi_project.set_global_time_signature(numerator, denominator)
+        
+        print(f"Time signature changed to {numerator}/{denominator}")
+    
+    def _update_project_ui(self, midi_project):
+        """Update UI elements when a new project is loaded"""
+        if midi_project:
+            # Update tempo and time signature widgets
+            tempo = midi_project.get_current_tempo()
+            time_sig = midi_project.get_current_time_signature()
+            
+            self.tempo_widget.set_tempo(tempo)
+            self.time_sig_widget.set_time_signature(time_sig[0], time_sig[1])
+            
+            print(f"Updated UI: Tempo={tempo} BPM, Time Signature={time_sig[0]}/{time_sig[1]}")
+    
+    def _update_playback_info(self):
+        """Update playback information in toolbar"""
+        engine = get_playback_engine()
+        if engine:
+            state = engine.get_state()
+            current_tick = engine.get_current_tick()
+            tempo_bpm = engine.get_tempo()
+            
+            self.playback_info_widget.update_playback_info(state, current_tick, tempo_bpm)
 

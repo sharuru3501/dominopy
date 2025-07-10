@@ -1,7 +1,7 @@
 
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
-from PySide6.QtCore import Qt, QRectF
-from PySide6.QtGui import QPainter, QColor, QFont
+from PySide6.QtCore import Qt, QRectF, QPointF, Signal, QTimer
+from PySide6.QtGui import QPainter, QColor, QFont, QPen, QBrush, QPolygonF
 from typing import List
 
 from src.midi_data_model import MidiProject, MidiNote
@@ -22,9 +22,24 @@ class PianoRollWidget(QWidget):
         self.setStyleSheet("background-color: #282c34;") # Dark background
         self.midi_project: MidiProject = None
 
-        # Scaling factors (pixels per tick, pixels per pitch)
-        self.pixels_per_tick = 0.12 # Adjust as needed
-        self.pixels_per_pitch = 10 # Adjust as needed
+        # Scaling factors (pixels per tick, pixels per pitch) - now configurable
+        from src.settings import get_settings
+        settings = get_settings()
+        self.pixels_per_tick = settings.display.grid_width_pixels  # Now stored as pixels per tick
+        self.pixels_per_pitch = settings.display.grid_height_pixels
+        
+        # Piano keyboard settings
+        self.piano_width = 80  # Width of piano keyboard on the left
+        self.show_piano_keyboard = True
+        
+        # Playhead settings
+        self.playhead_position = 0  # Current playhead position in ticks
+        self.is_playing = False
+        self.dragging_playhead = False
+        self.playhead_drag_start_x = 0
+        
+        # Vertical scroll settings
+        self.vertical_offset = 0  # Vertical scroll offset in pixels
 
         # Visible range (in ticks)
         self.visible_start_tick = 0
@@ -60,9 +75,17 @@ class PianoRollWidget(QWidget):
         
         # Enable focus to receive keyboard events
         self.setFocusPolicy(Qt.StrongFocus)
+        
+        # Timer for playback updates
+        self.playback_update_timer = QTimer()
+        self.playback_update_timer.timeout.connect(self._update_playback_state)
+        self.playback_update_timer.start(50)  # Update every 50ms
 
         # Initialize with default empty project state
-        self.set_midi_project(None) 
+        self.set_midi_project(None)
+        
+        # Force initial update to show playhead
+        self.update() 
 
     def set_midi_project(self, project: MidiProject):
         self.midi_project = project
@@ -90,22 +113,39 @@ class PianoRollWidget(QWidget):
             # Add some padding (e.g., 4 beats) to the end
             padding_ticks = self.midi_project.ticks_per_beat * 4
             self.visible_end_tick = max_tick + padding_ticks
-            # Ensure a minimum visible length, e.g., 32 beats
+            # Ensure a minimum visible length, e.g., 32 beats  
             min_visible_ticks = self.midi_project.ticks_per_beat * 32
             if self.visible_end_tick < min_visible_ticks:
                 self.visible_end_tick = min_visible_ticks
-            print(f"DEBUG: visible_end_tick = {self.visible_end_tick}") # DEBUG
         else:
             self.visible_end_tick = 480 * 32 # Default to 32 beats if no project
-            print(f"DEBUG: visible_end_tick (no project) = {self.visible_end_tick}") # DEBUG
         self.update() # Request a repaint
 
+    def update_display_settings(self):
+        """Update display settings and refresh"""
+        from src.settings import get_settings
+        settings = get_settings()
+        
+        # Update scaling factors
+        self.pixels_per_tick = settings.display.grid_width_pixels
+        self.pixels_per_pitch = settings.display.grid_height_pixels
+        
+        # Refresh display
+        self.update()
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
 
         width = self.width()
         height = self.height()
+        
+        # Calculate grid area (excluding piano keyboard)
+        grid_start_x = self.piano_width if self.show_piano_keyboard else 0
+        grid_width = width - grid_start_x
+
+        # Draw piano keyboard first (if enabled)
+        if self.show_piano_keyboard:
+            self._draw_piano_keyboard(painter, height)
 
         # Draw grid (simplified for now)
         # Horizontal lines for pitches (every MIDI note)
@@ -115,32 +155,37 @@ class PianoRollWidget(QWidget):
                 painter.setPen(QColor("#8be9fd")) # Light blue for C notes
             else:
                 painter.setPen(QColor("#3e4452")) # Lighter for other notes
-            painter.drawLine(0, int(y), width, int(y))
+            painter.drawLine(grid_start_x, int(y), width, int(y))
 
-        # Vertical lines for beats and subdivisions
+        # Vertical lines for beats and measures
         ticks_per_beat = self.midi_project.ticks_per_beat if self.midi_project else 480
-        # Draw lines for every beat (quarter note)
-        for tick in range(self.visible_start_tick, self.visible_end_tick + ticks_per_beat, ticks_per_beat):
-            x = self._tick_to_x(tick)
-            if tick % (ticks_per_beat * 4) == 0: # Every measure (assuming 4/4)
-                painter.setPen(QColor("#ff79c6")) # Pink/magenta for measures
-            else:
-                painter.setPen(QColor("#3e4452")) # Lighter for beats
-            painter.drawLine(int(x), 0, int(x), height)
-
-        painter.drawLine(int(x), 0, int(x), height)
+        ticks_per_measure = ticks_per_beat * 4  # Assuming 4/4 time signature
+        
+        # Draw measure lines (1 measure intervals)
+        for tick in range(0, self.visible_end_tick + ticks_per_measure, ticks_per_measure):
+            if tick >= self.visible_start_tick:
+                x = self._tick_to_x(tick) + grid_start_x
+                painter.setPen(QColor("#ff79c6"))  # Pink/magenta for measures
+                painter.drawLine(int(x), 0, int(x), height)
+        
+        # Draw beat lines (lighter, every beat)
+        for tick in range(0, self.visible_end_tick + ticks_per_beat, ticks_per_beat):
+            if tick >= self.visible_start_tick and tick % ticks_per_measure != 0:  # Skip measure lines
+                x = self._tick_to_x(tick) + grid_start_x
+                painter.setPen(QColor("#3e4452"))  # Lighter for beats
+                painter.drawLine(int(x), 0, int(x), height)
 
         # Draw MIDI notes
         if self.midi_project:
             for track in self.midi_project.tracks:
                 for note in track.notes:
-                    x = self._tick_to_x(note.start_tick)
+                    x = self._tick_to_x(note.start_tick) + grid_start_x
                     y = self._pitch_to_y(note.pitch)
                     note_width = note.duration * self.pixels_per_tick
                     note_height = self.pixels_per_pitch
 
                     # Only draw if visible
-                    if x < width and x + note_width > 0:
+                    if x < width and x + note_width > grid_start_x:
                         # Draw note rectangle
                         if note in self.selected_notes:
                             painter.setBrush(QColor("#f1fa8c")) # Yellow for selected notes
@@ -159,6 +204,9 @@ class PianoRollWidget(QWidget):
         if selection_rect:
             selection_rect.draw(painter)
         
+        # Draw playhead
+        self._draw_playhead(painter, height, grid_start_x)
+        
         # Draw mode indicator
         self._draw_mode_indicator(painter, width, height)
 
@@ -173,18 +221,18 @@ class PianoRollWidget(QWidget):
         # Y-axis in Qt goes from top (0) to bottom (height).
         # So, higher pitch should have a smaller Y value.
         # We want to draw from the top of the note's cell.
-        return self.height() - ((pitch + 1) * self.pixels_per_pitch)
+        return self.height() - ((pitch + 1) * self.pixels_per_pitch) + self.vertical_offset
 
     def _x_to_tick(self, x: int) -> int:
-        return int(x / self.pixels_per_tick) + self.visible_start_tick
+        grid_start_x = self.piano_width if self.show_piano_keyboard else 0
+        adjusted_x = x - grid_start_x
+        return int(adjusted_x / self.pixels_per_tick) + self.visible_start_tick
 
     def _y_to_pitch(self, y: int) -> int:
-        # Invert the _pitch_to_y logic
-        # y = height - ((pitch + 1) * pixels_per_pitch)
-        # (pitch + 1) * pixels_per_pitch = height - y
-        # pitch + 1 = (height - y) / pixels_per_pitch
-        # pitch = (height - y) / pixels_per_pitch - 1
-        pitch = int((self.height() - y) / self.pixels_per_pitch)
+        # Invert the _pitch_to_y logic with vertical offset
+        # y = height - ((pitch + 1) * pixels_per_pitch) + vertical_offset
+        # pitch = ((height - y + vertical_offset) / pixels_per_pitch) - 1
+        pitch = int(((self.height() - y + self.vertical_offset) / self.pixels_per_pitch) - 1)
         # Clamp pitch to valid MIDI range
         return max(0, min(127, pitch))
 
@@ -192,11 +240,33 @@ class PianoRollWidget(QWidget):
         # Ensure this widget has focus for keyboard events
         if not self.hasFocus():
             self.setFocus()
-            print("DEBUG: Setting focus to piano roll widget")
-        
         if event.button() == Qt.LeftButton:
             clicked_x = event.position().x()
             clicked_y = event.position().y()
+            
+            # Check if click is on piano keyboard
+            if self.show_piano_keyboard and clicked_x < self.piano_width:
+                # Handle piano key click (play note preview)
+                clicked_pitch = self._y_to_pitch(clicked_y)
+                
+                # Get note name for feedback
+                from src.music_theory import get_note_name_with_octave
+                note_name = get_note_name_with_octave(clicked_pitch)
+                print(f"Piano key clicked: {note_name} (MIDI {clicked_pitch})")
+                
+                audio_manager = get_audio_manager()
+                if audio_manager:
+                    audio_manager.play_note_preview(clicked_pitch, 100)
+                return
+            
+            # Check if clicking on playhead (always check regardless of mode)
+            grid_start_x = self.piano_width if self.show_piano_keyboard else 0
+            playhead_x = self._tick_to_x(self.playhead_position) + grid_start_x
+            if abs(clicked_x - playhead_x) <= 5:  # 5 pixel tolerance
+                self.dragging_playhead = True
+                self.playhead_drag_start_x = clicked_x
+                return
+            
             clicked_tick = self._x_to_tick(clicked_x)
             clicked_pitch = self._y_to_pitch(clicked_y)
 
@@ -205,9 +275,6 @@ class PianoRollWidget(QWidget):
 
             # Ensure clicked_tick is not negative
             clicked_tick = max(0, clicked_tick)
-
-            print(f"DEBUG: Mouse clicked at tick {clicked_tick}, pitch {clicked_pitch}")
-
             # Handle different modes
             if self.edit_mode_manager.is_note_input_mode():
                 self._handle_note_input_mode_click(event, clicked_x, clicked_y, clicked_tick, clicked_pitch)
@@ -217,39 +284,38 @@ class PianoRollWidget(QWidget):
             self.update() # Request repaint
 
         elif event.button() == Qt.RightButton:
-            print(f"DEBUG: Right-click detected at ({event.position().x()}, {event.position().y()})") # DEBUG
             clicked_x = event.position().x()
             clicked_y = event.position().y()
-
-            note_found_for_deletion = False
-            if self.midi_project:
-                for track in self.midi_project.tracks:
-                    for note in track.notes:
-                        note_x = self._tick_to_x(note.start_tick)
-                        note_y = self._pitch_to_y(note.pitch)
-                        note_width = note.duration * self.pixels_per_tick
-                        note_height = self.pixels_per_pitch
-
-                        if note_x <= clicked_x < (note_x + note_width) and \
-                           note_y <= clicked_y < (note_y + note_height):
-                            print(f"DEBUG: Note {note} found under right-click.") # DEBUG
-                            self.selected_notes = [note] # Select the note for deletion
-                            self._delete_selected_notes_with_command() # Delete it immediately
-                            note_found_for_deletion = True
-                            break # Note found and deleted, stop searching
-                    if note_found_for_deletion:
-                        break
             
-            if not note_found_for_deletion:
-                print("DEBUG: No note found under right-click. Clearing selection.") # DEBUG
-                self.selected_notes = [] # Clear selection if no note was right-clicked
+            # Check if clicking in grid area (not piano keyboard)
+            grid_start_x = self.piano_width if self.show_piano_keyboard else 0
+            if clicked_x >= grid_start_x:
+                # Convert click to tick position
+                clicked_tick = self._x_to_tick(clicked_x)
+                
+                # Move playhead to clicked position and play chord
+                self.playhead_position = max(0, clicked_tick)
+                
+                # Play notes at playhead position (like the original behavior)
+                self._play_notes_at_playhead()
+                
+                self.update()
+                return
 
+            # If right-clicking outside grid area, handle normally
             self.update() # Request repaint
 
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
-        if self.edit_mode_manager.is_note_input_mode():
+        if self.dragging_playhead:
+            # Handle playhead dragging
+            clicked_x = event.position().x()
+            grid_start_x = self.piano_width if self.show_piano_keyboard else 0
+            new_tick = self._x_to_tick(clicked_x)
+            self.playhead_position = max(0, new_tick)
+            self.update()
+        elif self.edit_mode_manager.is_note_input_mode():
             self._handle_note_input_mode_move(event)
         elif self.edit_mode_manager.is_selection_mode():
             self._handle_selection_mode_move(event)
@@ -257,7 +323,9 @@ class PianoRollWidget(QWidget):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
-        if self.edit_mode_manager.is_note_input_mode():
+        if self.dragging_playhead:
+            self.dragging_playhead = False
+        elif self.edit_mode_manager.is_note_input_mode():
             self._handle_note_input_mode_release(event)
         elif self.edit_mode_manager.is_selection_mode():
             self._handle_selection_mode_release(event)
@@ -266,9 +334,7 @@ class PianoRollWidget(QWidget):
 
     def _delete_selected_notes_with_command(self):
         """Delete selected notes using command system"""
-        print(f"DEBUG: _delete_selected_notes_with_command called. Selected notes: {self.selected_notes}") # DEBUG
         if not self.midi_project or not self.selected_notes:
-            print("DEBUG: No project or no selected notes to delete.") # DEBUG
             return
 
         # Find track-note pairs for deletion
@@ -284,19 +350,13 @@ class PianoRollWidget(QWidget):
             self.command_history.execute_command(command)
             self.selected_notes = [] # Clear selection
             self.update() # Repaint
-            print("DEBUG: _delete_selected_notes_with_command finished. UI updated.") # DEBUG
-    
     def _delete_selected_notes(self):
         """Legacy method - calls the command version"""
         self._delete_selected_notes_with_command()
 
     def keyPressEvent(self, event):
-        print(f"DEBUG: keyPressEvent received key: {event.key()}, modifiers: {event.modifiers()}") # DEBUG
-        print(f"DEBUG: Widget has focus: {self.hasFocus()}")
-        
         # Delete selected notes
         if event.key() == Qt.Key_Delete or event.key() == Qt.Key_Backspace:
-            print(f"DEBUG: Delete/Backspace key detected. Selected notes: {self.selected_notes}") # DEBUG
             self._delete_selected_notes_with_command()
         
         # Copy selected notes
@@ -309,7 +369,6 @@ class PianoRollWidget(QWidget):
         
         # Paste notes
         elif event.key() == Qt.Key_V and event.modifiers() == Qt.ControlModifier:
-            print("DEBUG: Ctrl+V pressed - calling _paste_notes()")
             self._paste_notes()
         
         # Undo
@@ -335,8 +394,181 @@ class PianoRollWidget(QWidget):
         # Switch to selection mode (2 key)
         elif event.key() == Qt.Key_2:
             self.edit_mode_manager.set_mode(EditMode.SELECTION)
+        
+        # Zoom shortcuts - improved detection for different keyboards
+        elif (event.key() == Qt.Key_Plus or event.key() == Qt.Key_Equal or 
+              event.text() == '+' or event.text() == '='):
+            center_x = self.width() / 2
+            center_y = self.height() / 2
+            if event.modifiers() & Qt.ShiftModifier:
+                self._zoom_vertical(1.1, center_y)
+            else:
+                self._zoom_horizontal(1.1, center_x)
+        
+        elif (event.key() == Qt.Key_Minus or event.key() == Qt.Key_Underscore or 
+              event.text() == '-' or event.text() == '_'):
+            center_x = self.width() / 2
+            center_y = self.height() / 2
+            if event.modifiers() & Qt.ShiftModifier:
+                self._zoom_vertical(0.9, center_y)
+            else:
+                self._zoom_horizontal(0.9, center_x)
+        
+        # Arrow key scrolling
+        elif event.key() == Qt.Key_Left:
+            scroll_amount = 100  # Scroll by 100 ticks
+            self.visible_start_tick = max(0, self.visible_start_tick - scroll_amount)
+            self.update()
+        
+        elif event.key() == Qt.Key_Right:
+            scroll_amount = 100  # Scroll by 100 ticks
+            self.visible_start_tick += scroll_amount
+            self.update()
+        
+        elif event.key() == Qt.Key_Up:
+            # Vertical scroll up (show higher pitches)
+            self.vertical_offset += 50
+            max_offset = 127 * self.pixels_per_pitch - self.height()
+            self.vertical_offset = min(max_offset, self.vertical_offset)
+            self.update()
+        
+        elif event.key() == Qt.Key_Down:
+            # Vertical scroll down (show lower pitches)
+            self.vertical_offset -= 50
+            min_offset = -20 * self.pixels_per_pitch
+            self.vertical_offset = max(min_offset, self.vertical_offset)
+            self.update()
+        
+        # Enter/Return: Toggle playback
+        elif event.key() == Qt.Key_Return or event.key() == Qt.Key_Enter:
+            self._toggle_playback()
+        
+        # Space key: Move playhead to beginning
+        elif event.key() == Qt.Key_Space:
+            self.playhead_position = 0
+            self.update()
+        
+        # Comma: Move playhead to previous measure
+        elif event.key() == Qt.Key_Comma:
+            self._move_playhead_to_measure(-1)
+        
+        # Period: Move playhead to next measure  
+        elif event.key() == Qt.Key_Period:
+            self._move_playhead_to_measure(1)
 
         super().keyPressEvent(event)
+    
+    def _toggle_playback(self):
+        """Toggle playback state"""
+        print("PianoRoll: _toggle_playback called")
+        
+        # Try multiple methods to find the playback system
+        main_window = self.parent()
+        attempts = 0
+        while main_window and attempts < 10:  # Prevent infinite loop
+            attempts += 1
+            print(f"PianoRoll: Checking parent {attempts}: {type(main_window).__name__}")
+            
+            # Check for different possible method names
+            if hasattr(main_window, 'toggle_playback'):
+                print("PianoRoll: Found toggle_playback method")
+                main_window.toggle_playback()
+                return
+            elif hasattr(main_window, '_toggle_playback'):
+                print("PianoRoll: Found _toggle_playback method")
+                main_window._toggle_playback()
+                return
+            elif hasattr(main_window, 'play_pause_action'):
+                print("PianoRoll: Found play_pause_action")
+                main_window.play_pause_action.trigger()
+                return
+            elif hasattr(main_window, 'playback_controls'):
+                if hasattr(main_window.playback_controls, 'toggle_playback'):
+                    print("PianoRoll: Found playback_controls.toggle_playback")
+                    main_window.playback_controls.toggle_playback()
+                    return
+            main_window = main_window.parent()
+        
+        # Direct engine access fallback
+        print("PianoRoll: Trying direct engine access")
+        from src.playback_engine import get_playback_engine
+        engine = get_playback_engine()
+        if engine:
+            print(f"PianoRoll: Found engine, current state: {engine.get_state()}")
+            engine.toggle_play_pause()
+            print(f"PianoRoll: After toggle, state: {engine.get_state()}")
+            return
+        
+        # Final fallback: toggle local state
+        self.is_playing = not self.is_playing
+        self.update()
+        print(f"Playback toggle requested (local state only: {'Playing' if self.is_playing else 'Stopped'})")
+    
+    def _move_playhead_to_measure(self, direction: int):
+        """Move playhead to nearest measure line (direction: -1 for previous, 1 for next)"""
+        ticks_per_beat = self.midi_project.ticks_per_beat if self.midi_project else 480
+        ticks_per_measure = ticks_per_beat * 4  # 4/4 time signature
+        
+        if direction < 0:
+            # Move to previous measure
+            target_measure = (self.playhead_position // ticks_per_measure)
+            if self.playhead_position % ticks_per_measure == 0 and self.playhead_position > 0:
+                target_measure -= 1  # If exactly on measure, go to previous
+            self.playhead_position = max(0, target_measure * ticks_per_measure)
+        else:
+            # Move to next measure
+            target_measure = (self.playhead_position // ticks_per_measure) + 1
+            self.playhead_position = target_measure * ticks_per_measure
+        
+        # Just move playhead, no sound
+        
+        self.update()
+    
+    def wheelEvent(self, event):
+        """Handle mouse wheel and trackpad events for zooming and scrolling"""
+        # Use angleDelta for both mouse wheel and trackpad - more reliable
+        delta = event.angleDelta()
+        
+        if delta.isNull():
+            return
+        
+        # Get scroll amount
+        scroll_y = delta.y()
+        scroll_x = delta.x()
+        
+        # Check modifiers for zoom
+        if event.modifiers() & Qt.ControlModifier:
+            # Ctrl+Wheel: Horizontal zoom
+            zoom_factor = 1.1 if scroll_y > 0 else 0.9
+            center_x = self.width() / 2
+            self._zoom_horizontal(zoom_factor, center_x)
+        elif event.modifiers() & Qt.ShiftModifier:
+            # Shift+Wheel: Vertical scrolling
+            if scroll_y != 0:
+                scroll_amount = scroll_y / 120 * 30  # Convert to reasonable scroll amount
+                self.vertical_offset += scroll_amount
+                # Limit vertical scroll range
+                max_offset = 127 * self.pixels_per_pitch - self.height()
+                min_offset = -20 * self.pixels_per_pitch  # Show some notes below MIDI 0
+                self.vertical_offset = max(min_offset, min(max_offset, self.vertical_offset))
+                self.update()
+        elif event.modifiers() & Qt.AltModifier:
+            # Alt+Wheel: Vertical zoom
+            zoom_factor = 1.1 if scroll_y > 0 else 0.9
+            center_y = self.height() / 2
+            self._zoom_vertical(zoom_factor, center_y)
+        else:
+            # Normal scroll: Horizontal timeline movement
+            if scroll_y != 0:
+                scroll_amount = scroll_y / 120 * 50  # Convert to reasonable scroll amount
+                self.visible_start_tick = max(0, int(self.visible_start_tick - scroll_amount))
+                self.update()
+            elif scroll_x != 0:
+                scroll_amount = scroll_x / 120 * 50
+                self.visible_start_tick = max(0, int(self.visible_start_tick + scroll_amount))
+                self.update()
+        
+        event.accept()
     
     def _copy_selected_notes(self):
         """Copy selected notes to clipboard"""
@@ -345,12 +577,9 @@ class PianoRollWidget(QWidget):
             reference_tick = min(note.start_tick for note in self.selected_notes)
             reference_pitch = min(note.pitch for note in self.selected_notes)
             global_clipboard.copy_notes(self.selected_notes, reference_tick, reference_pitch)
-            print(f"DEBUG: Copied {len(self.selected_notes)} notes to clipboard with reference tick {reference_tick}, pitch {reference_pitch}")
-    
     def _cut_selected_notes(self):
         """Cut selected notes to clipboard"""
         if not self.selected_notes:
-            print("DEBUG: No notes selected for cutting")
             return
         
         # Copy to clipboard first
@@ -369,25 +598,18 @@ class PianoRollWidget(QWidget):
             self.command_history.execute_command(command)
             self.selected_notes = [] # Clear selection after cutting
             self.update()
-            print(f"DEBUG: Cut {len(track_note_pairs)} notes to clipboard")
-    
     def _paste_notes(self):
         """Paste notes from clipboard"""
         if not global_clipboard.has_data():
-            print("DEBUG: No data in clipboard to paste")
             return
         
         if not self.midi_project or not self.midi_project.tracks:
-            print("DEBUG: No project or tracks to paste into")
             return
         
         # Debug: Show current state
         paste_target = self.grid_manager.get_paste_target_cell()
         selected_cells = self.grid_manager.get_selected_cells()
-        print(f"DEBUG: Paste target cell: {paste_target}")
-        print(f"DEBUG: Selected cells count: {len(selected_cells)}")
-        print(f"DEBUG: Selected notes count: {len(self.selected_notes)}")
-        
+
         # Determine paste target (both tick and pitch)
         target_tick = 0
         target_pitch = None
@@ -411,13 +633,8 @@ class PianoRollWidget(QWidget):
             target_tick = min(note.start_tick for note in self.selected_notes)
             target_pitch = min(note.pitch for note in self.selected_notes)
             source_description = f"selected notes position at tick {target_tick}, pitch {target_pitch}"
-        
-        print(f"DEBUG: Using {source_description}")
-        
         # Quantize target tick
         target_tick = round(target_tick / self.quantize_grid_ticks) * self.quantize_grid_ticks
-        print(f"DEBUG: Quantized target tick: {target_tick}, target pitch: {target_pitch}")
-        
         # Get notes from clipboard
         notes_to_paste = global_clipboard.paste_notes(target_tick, target_pitch)
         
@@ -434,28 +651,25 @@ class PianoRollWidget(QWidget):
             # Don't clear grid selection automatically - let user decide
             
             self.update()
-            print(f"DEBUG: Successfully pasted {len(notes_to_paste)} notes at tick {target_tick}, pitch {target_pitch}")
         else:
-            print("DEBUG: No notes to paste from clipboard")
-    
+            pass
+            
     def _undo(self):
         """Undo last operation"""
         if self.command_history.undo():
             self.selected_notes = [] # Clear selection after undo
             self.update()
-            print("DEBUG: Undo performed")
         else:
-            print("DEBUG: Nothing to undo")
-    
+            pass
+            
     def _redo(self):
         """Redo last undone operation"""
         if self.command_history.redo():
             self.selected_notes = [] # Clear selection after redo
             self.update()
-            print("DEBUG: Redo performed")
         else:
-            print("DEBUG: Nothing to redo")
-    
+            pass
+            
     def _select_all(self):
         """Select all notes in the project"""
         if not self.midi_project:
@@ -467,22 +681,13 @@ class PianoRollWidget(QWidget):
         
         self.selected_notes = all_notes
         self.update()
-        print(f"DEBUG: Selected all {len(all_notes)} notes")
-    
     def _on_mode_changed(self, mode: EditMode):
         """Handle mode change"""
-        print(f"DEBUG: Mode changing to {mode.value}")
-        print(f"DEBUG: Grid selected cells before mode change: {len(self.grid_manager.get_selected_cells())}")
+
         paste_target_before = self.grid_manager.get_paste_target_cell()
-        print(f"DEBUG: Paste target before mode change: {paste_target_before}")
-        
         self.edit_mode_manager.clear_selection_rectangle()
         # Don't clear grid selection when changing modes
-        
-        print(f"DEBUG: Grid selected cells after mode change: {len(self.grid_manager.get_selected_cells())}")
         paste_target_after = self.grid_manager.get_paste_target_cell()
-        print(f"DEBUG: Paste target after mode change: {paste_target_after}")
-        
         self.update()
     
     def _draw_mode_indicator(self, painter: QPainter, width: int, height: int):
@@ -517,7 +722,8 @@ class PianoRollWidget(QWidget):
         if self.midi_project:
             for track in self.midi_project.tracks:
                 for note in track.notes:
-                    note_x = self._tick_to_x(note.start_tick)
+                    grid_start_x = self.piano_width if self.show_piano_keyboard else 0
+                    note_x = self._tick_to_x(note.start_tick) + grid_start_x
                     note_y = self._pitch_to_y(note.pitch)
                     note_width = note.duration * self.pixels_per_tick
                     note_height = self.pixels_per_pitch
@@ -536,7 +742,6 @@ class PianoRollWidget(QWidget):
                             break
                         # Check if click is near the left edge for resizing
                         elif clicked_x <= (note_x + resize_threshold):
-                            print("DEBUG: Left edge resize detected!") # DEBUG
                             self.resizing_left_edge = True
                             self.resizing_note = note
                             self.resize_start_tick = note.start_tick
@@ -582,8 +787,6 @@ class PianoRollWidget(QWidget):
                 audio_manager = get_audio_manager()
                 if audio_manager:
                     audio_manager.play_note_preview(new_note.pitch, new_note.velocity)
-                    print(f"DEBUG: Playing note preview - pitch: {new_note.pitch}, velocity: {new_note.velocity}")
-                
                 # Select the newly created note
                 self.selected_notes = [new_note]
                 self.update() # Repaint to show the new note
@@ -600,7 +803,8 @@ class PianoRollWidget(QWidget):
         if self.midi_project:
             for track in self.midi_project.tracks:
                 for note in track.notes:
-                    note_x = self._tick_to_x(note.start_tick)
+                    grid_start_x = self.piano_width if self.show_piano_keyboard else 0
+                    note_x = self._tick_to_x(note.start_tick) + grid_start_x
                     note_y = self._pitch_to_y(note.pitch)
                     note_width = note.duration * self.pixels_per_tick
                     note_height = self.pixels_per_pitch
@@ -626,29 +830,22 @@ class PianoRollWidget(QWidget):
             if event.modifiers() & Qt.ShiftModifier:
                 # Shift+click: Set paste target
                 self.grid_manager.set_paste_target(grid_cell)
-                print(f"DEBUG: Set paste target at tick {grid_cell.start_tick}, pitch {grid_cell.pitch}")
-                print(f"DEBUG: Paste target cell: {self.grid_manager.get_paste_target_cell()}")
-                
+
                 # Test immediate paste target retrieval
                 test_target = self.grid_manager.get_paste_target_cell()
                 if test_target:
-                    print(f"DEBUG: Immediate paste target test: tick {test_target.start_tick}")
+                    pass
                 else:
-                    print("DEBUG: ERROR - Paste target is None immediately after setting!")
-                    
+                    pass
             elif event.modifiers() & Qt.ControlModifier:
                 # Ctrl+click: Toggle grid cell selection
                 self.grid_manager.toggle_cell_selection(grid_cell)
                 selected_cells = self.grid_manager.get_selected_cells()
-                print(f"DEBUG: Toggled grid cell selection at tick {grid_cell.start_tick}, pitch {grid_cell.pitch}")
-                print(f"DEBUG: Total selected cells: {len(selected_cells)}")
+
                 for cell in selected_cells:
-                    print(f"DEBUG: Selected cell: tick {cell.start_tick}, pitch {cell.pitch}")
-                    
+                    pass
                 # Test immediate cell selection retrieval
                 test_cells = self.grid_manager.get_selected_cells()
-                print(f"DEBUG: Immediate cell selection test: {len(test_cells)} cells")
-                    
             else:
                 # Regular click: Start rectangle selection
                 self.edit_mode_manager.start_selection_rectangle(QPointF(clicked_x, clicked_y))
@@ -656,8 +853,6 @@ class PianoRollWidget(QWidget):
                 self.selected_notes = []
                 self.grid_manager.clear_selection()
                 self.grid_manager.clear_paste_target()
-                print("DEBUG: Started rectangle selection, cleared all selections")
-    
     def _handle_note_input_mode_move(self, event):
         """Handle mouse move in note input mode"""
         if self.dragging_note and event.buttons() == Qt.LeftButton:
@@ -809,7 +1004,8 @@ class PianoRollWidget(QWidget):
         
         for track in self.midi_project.tracks:
             for note in track.notes:
-                note_x = self._tick_to_x(note.start_tick)
+                grid_start_x = self.piano_width if self.show_piano_keyboard else 0
+                note_x = self._tick_to_x(note.start_tick) + grid_start_x
                 note_y = self._pitch_to_y(note.pitch)
                 note_width = note.duration * self.pixels_per_tick
                 note_height = self.pixels_per_pitch
@@ -819,10 +1015,254 @@ class PianoRollWidget(QWidget):
                 if rect.intersects(note_rect):
                     if note not in self.selected_notes:
                         self.selected_notes.append(note)
-        
-        print(f"DEBUG: Selected {len(self.selected_notes)} notes in rectangle")
-    
     def get_edit_mode_manager(self):
         """Get the edit mode manager (for external access)"""
         return self.edit_mode_manager
+    
+    def _draw_piano_keyboard(self, painter: QPainter, height: int):
+        """Draw piano keyboard on the left side"""
+        # Note names and black key pattern
+        note_names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+        black_keys = [1, 3, 6, 8, 10]  # C#, D#, F#, G#, A#
+        
+        painter.save()
+        
+        # Background for piano area
+        painter.fillRect(0, 0, self.piano_width, height, QColor("#1e1e1e"))
+        
+        # Draw white keys first
+        for pitch in range(0, 128):
+            note_index = pitch % 12
+            if note_index not in black_keys:  # White key
+                y = self._pitch_to_y(pitch)
+                key_height = self.pixels_per_pitch
+                
+                # White key color - always white
+                key_color = QColor("#f8f8f2")
+                
+                painter.fillRect(0, int(y), self.piano_width - 1, int(key_height), key_color)
+                
+                # Key border
+                painter.setPen(QColor("#44475a"))
+                painter.drawRect(0, int(y), self.piano_width - 1, int(key_height))
+                
+                # Note label for C notes
+                if note_index == 0:  # C note
+                    octave = (pitch // 12) - 1
+                    font = QFont()
+                    font.setPointSize(8)
+                    painter.setFont(font)
+                    painter.setPen(QColor("#282a36"))
+                    painter.drawText(5, int(y + key_height - 3), f"C{octave}")
+        
+        # Draw black keys on top
+        for pitch in range(0, 128):
+            note_index = pitch % 12
+            if note_index in black_keys:  # Black key
+                y = self._pitch_to_y(pitch)
+                key_height = self.pixels_per_pitch
+                black_key_width = int(self.piano_width * 0.5)  # Make black keys shorter
+                
+                # Black key color - always black
+                key_color = QColor("#282a36")
+                
+                painter.fillRect(0, int(y), black_key_width, int(key_height), key_color)
+                
+                # Key border
+                painter.setPen(QColor("#6272a4"))
+                painter.drawRect(0, int(y), black_key_width, int(key_height))
+        
+        # Separator line between piano and grid
+        painter.setPen(QColor("#6272a4"))
+        painter.drawLine(self.piano_width - 1, 0, self.piano_width - 1, height)
+        
+        painter.restore()
+    
+    def _draw_playhead(self, painter: QPainter, height: int, grid_start_x: int):
+        """Draw the playhead line"""
+        painter.save()
+        
+        # Calculate playhead x position
+        playhead_x = self._tick_to_x(self.playhead_position) + grid_start_x
+        
+        # Only skip drawing if playhead is way off screen
+        if playhead_x < -100 or playhead_x > self.width() + 100:
+            painter.restore()
+            return
+        
+        # Draw simple playhead line
+        if self.is_playing:
+            painter.setPen(QPen(QColor("#50fa7b"), 3))  # Green when playing
+        else:
+            painter.setPen(QPen(QColor("#bd93f9"), 3))  # Purple when stopped
+        
+        painter.drawLine(int(playhead_x), 0, int(playhead_x), height)
+        
+        painter.restore()
+    
+    def _play_selected_notes_as_chord(self):
+        """Play selected notes as a chord"""
+        if not self.selected_notes:
+            return
+        
+        audio_manager = get_audio_manager()
+        if not audio_manager:
+            return
+        
+        # Get pitches from selected notes
+        pitches = [note.pitch for note in self.selected_notes]
+        
+        # Play all notes simultaneously
+        for pitch in pitches:
+            audio_manager.play_note_preview(pitch, 100)
+        
+        # Analyze and display chord information
+        from src.music_theory import detect_chord, get_note_name_with_octave
+        
+        chord = detect_chord(pitches)
+        if chord:
+            # Get chord notes and format with構成音
+            chord_notes = [note.name for note in chord.notes[:6]]  # First 6 notes
+            if len(chord.notes) > 6:
+                chord_notes.append("...")
+            chord_info = f"{chord.name} ({', '.join(chord_notes)})"
+            print(f"Selected Chord: {chord_info}")
+            self._display_chord_info(chord_info)
+        else:
+            note_names = [get_note_name_with_octave(pitch) for pitch in sorted(pitches)]
+            notes_info = f"{', '.join(note_names)}"
+            print(f"Selected Notes: {notes_info}")
+            self._display_chord_info(notes_info)
+    
+    def _play_notes_at_playhead(self):
+        """Play all notes at the current playhead position as a chord"""
+        if not self.midi_project:
+            return
+            
+        # Find all notes that are playing at the playhead position
+        notes_at_playhead = []
+        for track in self.midi_project.tracks:
+            for note in track.notes:
+                if note.start_tick <= self.playhead_position < note.end_tick:
+                    notes_at_playhead.append(note)
+        
+        if not notes_at_playhead:
+            print(f"No notes playing at position {self.playhead_position}")
+            return
+        
+        # Play the notes as a chord
+        audio_manager = get_audio_manager()
+        if audio_manager:
+            pitches = [note.pitch for note in notes_at_playhead]
+            for pitch in pitches:
+                audio_manager.play_note_preview(pitch, 100)
+            
+            # Analyze and display chord information
+            from src.music_theory import detect_chord, get_note_name_with_octave
+            
+            chord = detect_chord(pitches)
+            if chord:
+                # Get chord notes and format
+                chord_notes = [note.name for note in chord.notes[:6]]  # First 6 notes
+                if len(chord.notes) > 6:
+                    chord_notes.append("...")
+                chord_info = f"{chord.name} ({', '.join(chord_notes)})"
+                print(f"Chord at playhead: {chord_info}")
+                self._display_chord_info(chord_info)
+            else:
+                note_names = [get_note_name_with_octave(pitch) for pitch in sorted(pitches)]
+                notes_info = f"{', '.join(note_names)}"
+                print(f"Notes at playhead: {notes_info}")
+                self._display_chord_info(notes_info)
+    
+    def _display_chord_info(self, info: str):
+        """Display chord information in the top bar (placeholder)"""
+        # This should communicate with the main window to update the top bar
+        main_window = self.parent()
+        while main_window and not hasattr(main_window, 'update_chord_display'):
+            main_window = main_window.parent()
+        
+        if main_window and hasattr(main_window, 'update_chord_display'):
+            main_window.update_chord_display(info)
+        else:
+            # Fallback: just print for now
+            print(f"Chord Info: {info}")
+    
+    def set_playhead_position(self, position: int):
+        """Set playhead position from external source (like playback engine)"""
+        self.playhead_position = position
+        self.update()
+    
+    def set_playing_state(self, is_playing: bool):
+        """Set playing state from external source"""
+        self.is_playing = is_playing
+        self.update()
+    
+    def _update_playback_state(self):
+        """Update playback state from playback engine"""
+        from src.playback_engine import get_playback_engine
+        
+        engine = get_playback_engine()
+        if engine:
+            old_position = self.playhead_position
+            old_playing = self.is_playing
+            
+            self.playhead_position = engine.get_current_tick()
+            self.is_playing = engine.is_playing()
+            
+            # Only update if something changed
+            if old_position != self.playhead_position or old_playing != self.is_playing:
+                self.update()
+    
+    def _zoom_horizontal(self, zoom_factor: float, center_x: float):
+        """Zoom horizontally around the specified center point"""
+        try:
+            from src.settings import get_settings
+            settings = get_settings()
+            
+            # Calculate new zoom level
+            new_pixels_per_tick = self.pixels_per_tick * zoom_factor
+            
+            # Apply bounds based on optimal range (0.08 to 0.25 pixels per tick)
+            min_pixels_per_tick = 0.08
+            max_pixels_per_tick = 0.25
+            new_pixels_per_tick = max(min_pixels_per_tick, min(max_pixels_per_tick, new_pixels_per_tick))
+            
+            # Only update if the value actually changed
+            if abs(new_pixels_per_tick - self.pixels_per_tick) > 0.001:
+                # Update zoom
+                self.pixels_per_tick = new_pixels_per_tick
+                settings.display.grid_width_pixels = new_pixels_per_tick
+                
+                # Safe update
+                if self.isVisible():
+                    self.update()
+        except Exception as e:
+            pass  # Silent fail for stability
+    
+    def _zoom_vertical(self, zoom_factor: float, center_y: float):
+        """Zoom vertically around the specified center point"""
+        try:
+            from src.settings import get_settings
+            settings = get_settings()
+            
+            # Calculate new zoom level
+            new_pixels_per_pitch = self.pixels_per_pitch * zoom_factor
+            
+            # Apply bounds based on optimal range (8 to 25 pixels per semitone)
+            min_pixels_per_pitch = 8.0
+            max_pixels_per_pitch = 25.0
+            new_pixels_per_pitch = max(min_pixels_per_pitch, min(max_pixels_per_pitch, new_pixels_per_pitch))
+            
+            # Only update if the value actually changed
+            if abs(new_pixels_per_pitch - self.pixels_per_pitch) > 0.1:
+                # Update zoom
+                self.pixels_per_pitch = new_pixels_per_pitch
+                settings.display.grid_height_pixels = new_pixels_per_pitch
+                
+                # Safe update
+                if self.isVisible():
+                    self.update()
+        except Exception as e:
+            pass  # Silent fail for stability
 

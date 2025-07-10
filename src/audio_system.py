@@ -29,7 +29,6 @@ if sys.platform == "darwin":
 else:
     MACOS_AUDIO_AVAILABLE = False
 
-
 @dataclass
 class AudioSettings:
     """Audio system settings"""
@@ -38,7 +37,6 @@ class AudioSettings:
     gain: float = 0.5
     soundfont_path: Optional[str] = None
     midi_device_id: Optional[int] = None
-
 
 class FluidSynthAudio(QObject):
     """FluidSynth-based audio engine"""
@@ -175,7 +173,6 @@ class FluidSynthAudio(QObject):
             except Exception as e:
                 print(f"Error cleaning up audio: {str(e)}")
 
-
 class MidiOutputDevice(QObject):
     """MIDI output device using python-rtmidi"""
     
@@ -274,7 +271,6 @@ class MidiOutputDevice(QObject):
             except Exception as e:
                 print(f"Error cleaning up MIDI: {str(e)}")
 
-
 class AudioManager(QObject):
     """Main audio manager that handles both FluidSynth and MIDI output"""
     
@@ -299,7 +295,7 @@ class AudioManager(QObject):
         self.note_stop_timer = QTimer()
         self.note_stop_timer.timeout.connect(self._stop_preview_notes)
         self.note_stop_timer.setSingleShot(False)
-        self.note_stop_timer.start(50)  # Check every 50ms
+        # Don't start timer immediately - start it only when needed
     
     def initialize(self) -> bool:
         """Initialize audio system"""
@@ -343,6 +339,8 @@ class AudioManager(QObject):
         
         if success:
             self.audio_ready.emit()
+            # Start timer only after successful initialization
+            self.note_stop_timer.start(50)  # Check every 50ms
         else:
             print("No audio output available")
         
@@ -365,6 +363,40 @@ class AudioManager(QObject):
         if success:
             self.active_notes[pitch] = time.time()
         
+        return success
+    
+    def play_note_immediate(self, pitch: int, velocity: int = 100) -> bool:
+        """Play a note immediately (for playback engine)"""
+        success = False
+        
+        # Try macOS audio first
+        if hasattr(self, 'macos_audio') and self.macos_audio:
+            success = self.macos_audio.play_note(self.current_channel, pitch, velocity)
+        # Try FluidSynth
+        elif self.use_fluidsynth and self.fluidsynth_audio:
+            success = self.fluidsynth_audio.play_note(self.current_channel, pitch, velocity)
+        # Fallback to MIDI output
+        elif self.midi_device:
+            success = self.midi_device.send_note_on(self.current_channel, pitch, velocity)
+        
+        # Don't add to active_notes for auto-stop (playback engine handles timing)
+        return success
+    
+    def stop_note_immediate(self, pitch: int) -> bool:
+        """Stop a note immediately (for playback engine)"""
+        success = False
+        
+        # Try macOS audio first
+        if hasattr(self, 'macos_audio') and self.macos_audio:
+            success = self.macos_audio.stop_note(self.current_channel, pitch)
+        # Try FluidSynth
+        elif self.use_fluidsynth and self.fluidsynth_audio:
+            success = self.fluidsynth_audio.stop_note(self.current_channel, pitch)
+        # Fallback to MIDI output
+        elif self.midi_device:
+            success = self.midi_device.send_note_off(self.current_channel, pitch)
+        
+        # Don't modify active_notes (playback engine handles timing)
         return success
     
     def stop_note_preview(self, pitch: int) -> bool:
@@ -438,15 +470,12 @@ class AudioManager(QObject):
         
         print("Audio manager cleaned up")
 
-
 # Global audio manager instance
 audio_manager: Optional[AudioManager] = None
-
 
 def get_audio_manager() -> Optional[AudioManager]:
     """Get the global audio manager instance"""
     return audio_manager
-
 
 def initialize_audio_manager(settings: AudioSettings) -> bool:
     """Initialize the global audio manager"""
@@ -457,7 +486,6 @@ def initialize_audio_manager(settings: AudioSettings) -> bool:
     
     audio_manager = AudioManager(settings)
     return audio_manager.initialize()
-
 
 def cleanup_audio_manager():
     """Clean up the global audio manager"""
