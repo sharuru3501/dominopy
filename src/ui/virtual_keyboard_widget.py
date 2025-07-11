@@ -2,7 +2,7 @@
 Virtual Keyboard Widget
 Provides a virtual piano keyboard that can be played using computer keyboard keys
 """
-from typing import Dict, Optional, Set
+from typing import Dict, Optional, Set, List
 from dataclasses import dataclass
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                               QPushButton, QSlider, QSpinBox, QGroupBox,
@@ -134,6 +134,14 @@ class VirtualKeyboardWidget(QDialog):
         mapping_panel = self._create_mapping_panel()
         layout.addWidget(mapping_panel)
         
+        # Chord display panel
+        chord_panel = self._create_chord_display_panel()
+        layout.addWidget(chord_panel)
+        
+        # Chord analysis panel (additional info)
+        analysis_panel = self._create_analysis_panel()
+        layout.addWidget(analysis_panel)
+        
         # Update display
         self._update_piano_display()
     
@@ -193,6 +201,74 @@ class VirtualKeyboardWidget(QDialog):
         
         return group
     
+    def _create_chord_display_panel(self):
+        """Create chord name display panel"""
+        group = QGroupBox("Chord Display")
+        layout = QVBoxLayout(group)
+        
+        # Chord name label (large font)
+        self.chord_name_label = QLabel("---")
+        self.chord_name_label.setFont(QFont("Arial", 16, QFont.Bold))
+        self.chord_name_label.setAlignment(Qt.AlignCenter)
+        self.chord_name_label.setStyleSheet("""
+            QLabel {
+                background-color: #f0f0f0;
+                border: 2px solid #ddd;
+                border-radius: 8px;
+                padding: 10px;
+                min-height: 40px;
+            }
+        """)
+        layout.addWidget(self.chord_name_label)
+        
+        # Chord notes label (smaller font)
+        self.chord_notes_label = QLabel("Press keys to see chord")
+        self.chord_notes_label.setFont(QFont("Arial", 10))
+        self.chord_notes_label.setAlignment(Qt.AlignCenter)
+        self.chord_notes_label.setStyleSheet("""
+            QLabel {
+                color: #666;
+                padding: 5px;
+            }
+        """)
+        layout.addWidget(self.chord_notes_label)
+        
+        return group
+    
+    def _create_analysis_panel(self):
+        """Create additional harmonic analysis panel"""
+        group = QGroupBox("Harmonic Analysis")
+        layout = QVBoxLayout(group)
+        
+        # Interval analysis label
+        self.interval_analysis_label = QLabel("---")
+        self.interval_analysis_label.setFont(QFont("Arial", 9))
+        self.interval_analysis_label.setAlignment(Qt.AlignCenter)
+        self.interval_analysis_label.setStyleSheet("""
+            QLabel {
+                color: #888;
+                padding: 5px;
+                background-color: #f8f8f8;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+            }
+        """)
+        layout.addWidget(self.interval_analysis_label)
+        
+        # Key suggestion label
+        self.key_suggestion_label = QLabel("Possible keys: ---")
+        self.key_suggestion_label.setFont(QFont("Arial", 8))
+        self.key_suggestion_label.setAlignment(Qt.AlignCenter)
+        self.key_suggestion_label.setStyleSheet("""
+            QLabel {
+                color: #666;
+                padding: 3px;
+            }
+        """)
+        layout.addWidget(self.key_suggestion_label)
+        
+        return group
+    
     def _update_piano_display(self):
         """Update piano keyboard visual display"""
         if hasattr(self, 'piano_display'):
@@ -239,6 +315,7 @@ class VirtualKeyboardWidget(QDialog):
                 self.pressed_notes.add(midi_pitch)
                 self.note_pressed.emit(midi_pitch, self.current_velocity)
                 self._update_piano_display()
+                self._update_chord_display()
         
         super().keyPressEvent(event)
     
@@ -262,6 +339,7 @@ class VirtualKeyboardWidget(QDialog):
                 self.pressed_notes.discard(midi_pitch)
                 self.note_released.emit(midi_pitch)
                 self._update_piano_display()
+                self._update_chord_display()
         
         super().keyReleaseEvent(event)
     
@@ -287,6 +365,132 @@ class VirtualKeyboardWidget(QDialog):
             self.note_released.emit(pitch)
         self.pressed_notes.clear()
         self._update_piano_display()
+        self._update_chord_display()
+    
+    def _update_chord_display(self):
+        """Update chord name display with enhanced detail based on currently pressed notes"""
+        try:
+            if not self.pressed_notes:
+                # No notes pressed - clear display
+                self.chord_name_label.setText("---")
+                self.chord_notes_label.setText("Press keys to see chord")
+                self._clear_analysis_display()
+                return
+            
+            # Convert MIDI pitches to sorted list
+            pitches = sorted(list(self.pressed_notes))
+            
+            if len(pitches) == 1:
+                # Single note - show note name with octave
+                from src.music_theory import get_note_name_with_octave
+                note_name = get_note_name_with_octave(pitches[0])
+                self.chord_name_label.setText(note_name)
+                self.chord_notes_label.setText("Single note")
+                self._update_single_note_analysis(pitches[0])
+                return
+            
+            # Multiple notes - detect chord with enhanced analysis
+            from src.music_theory import detect_chord, get_note_name_with_octave, analyze_harmony
+            
+            chord = detect_chord(pitches)
+            if chord:
+                # Display enhanced chord name
+                chord_display_name = chord.name
+                
+                # Add chord type information for clarity
+                chord_type_info = ""
+                if "13" in chord.name:
+                    chord_type_info = " (13th chord)"
+                elif "11" in chord.name:
+                    chord_type_info = " (11th chord)"
+                elif "9" in chord.name:
+                    chord_type_info = " (9th chord)"
+                elif "maj7" in chord.name or "7" in chord.name:
+                    chord_type_info = " (7th chord)"
+                elif "6" in chord.name:
+                    chord_type_info = " (6th chord)"
+                elif "sus" in chord.name:
+                    chord_type_info = " (suspended)"
+                elif "dim" in chord.name:
+                    chord_type_info = " (diminished)"
+                elif "aug" in chord.name:
+                    chord_type_info = " (augmented)"
+                elif "add" in chord.name:
+                    chord_type_info = " (added note)"
+                elif chord.chord_type == "major":
+                    chord_type_info = " (major triad)"
+                elif chord.chord_type == "minor":
+                    chord_type_info = " (minor triad)"
+                
+                self.chord_name_label.setText(chord_display_name + chord_type_info)
+                
+                # Display detailed chord analysis
+                actual_pitches = [get_note_name_with_octave(p) for p in pitches[:8]]
+                if len(pitches) > 8:
+                    actual_pitches.append("...")
+                
+                # Show both theoretical chord notes and actual played notes
+                theoretical_notes = [note.name for note in chord.notes[:6]]
+                if len(chord.notes) > 6:
+                    theoretical_notes.append("...")
+                
+                notes_text = f"Theory: {', '.join(theoretical_notes)} | Played: {', '.join([p.replace(str(p)[-1:], '') for p in actual_pitches if p != '...'])}"
+                if len(notes_text) > 60:  # Truncate if too long
+                    notes_text = f"Played: {', '.join([p.replace(str(p)[-1:], '') for p in actual_pitches[:6] if p != '...'])}"
+                
+                self.chord_notes_label.setText(notes_text)
+                
+                # Enhanced logging for debugging
+                intervals = [(p % 12) for p in pitches]
+                unique_intervals = sorted(set(intervals))
+                normalized_intervals = [(i - intervals[0]) % 12 for i in unique_intervals]
+                print(f"Virtual Keyboard Chord: {chord.name} | Type: {chord.chord_type} | Intervals: {normalized_intervals}")
+                
+                # Update analysis panel
+                self._update_harmonic_analysis(pitches, chord)
+                
+            else:
+                # No chord detected - show detailed individual note analysis
+                note_names = []
+                for pitch in pitches[:8]:  # Show more notes
+                    note_name = get_note_name_with_octave(pitch)
+                    note_names.append(note_name.replace(str(note_name)[-1:], ''))  # Remove octave for brevity
+                
+                if len(pitches) > 8:
+                    note_names.append("...")
+                
+                # Try to provide some harmonic analysis even if no chord detected
+                intervals = [(p % 12) for p in pitches]
+                unique_intervals = sorted(set(intervals))
+                normalized_intervals = [(i - intervals[0]) % 12 for i in unique_intervals]
+                
+                harmony_hint = ""
+                if 4 in normalized_intervals and 7 in normalized_intervals:
+                    harmony_hint = " (major-like)"
+                elif 3 in normalized_intervals and 7 in normalized_intervals:
+                    harmony_hint = " (minor-like)"
+                elif 3 in normalized_intervals and 6 in normalized_intervals:
+                    harmony_hint = " (diminished-like)"
+                elif 4 in normalized_intervals and 8 in normalized_intervals:
+                    harmony_hint = " (augmented-like)"
+                elif 5 in normalized_intervals:
+                    harmony_hint = " (suspended-like)"
+                
+                self.chord_name_label.setText(f"Complex{harmony_hint} ({len(pitches)} notes)")
+                self.chord_notes_label.setText(f"Notes: {', '.join(note_names)}")
+                
+                print(f"Virtual Keyboard - No standard chord detected. Notes: {note_names}, Intervals: {normalized_intervals}")
+                
+                # Update analysis panel for unrecognized chords
+                self._update_unrecognized_analysis(pitches)
+                
+        except Exception as e:
+            print(f"Error in enhanced chord detection: {e}")
+            import traceback
+            traceback.print_exc()
+            # Fallback display
+            self.chord_name_label.setText("Analysis Error")
+            self.chord_notes_label.setText(f"{len(self.pressed_notes)} notes - detection failed")
     
     def update_track_info(self, track_name: str, source_name: str = ""):
         """Update current track information display"""
@@ -306,7 +510,130 @@ class VirtualKeyboardWidget(QDialog):
         for pitch in list(self.pressed_notes):
             self.note_released.emit(pitch)
         self.pressed_notes.clear()
+        
+        # Clear chord display
+        if hasattr(self, 'chord_name_label'):
+            self.chord_name_label.setText("---")
+        if hasattr(self, 'chord_notes_label'):
+            self.chord_notes_label.setText("Closed")
+            
         super().closeEvent(event)
+    
+    def _clear_analysis_display(self):
+        """Clear harmonic analysis display"""
+        if hasattr(self, 'interval_analysis_label'):
+            self.interval_analysis_label.setText("---")
+        if hasattr(self, 'key_suggestion_label'):
+            self.key_suggestion_label.setText("Possible keys: ---")
+    
+    def _update_single_note_analysis(self, pitch: int):
+        """Update analysis for single note"""
+        try:
+            from src.music_theory import get_note_name_with_octave, analyze_harmony
+            
+            note_name = get_note_name_with_octave(pitch)
+            
+            if hasattr(self, 'interval_analysis_label'):
+                self.interval_analysis_label.setText(f"Root note: {note_name}")
+            
+            if hasattr(self, 'key_suggestion_label'):
+                # Show keys that contain this note
+                analysis = analyze_harmony([pitch])
+                if analysis["key_suggestions"]:
+                    keys_text = ", ".join(analysis["key_suggestions"][:5])
+                    self.key_suggestion_label.setText(f"Possible keys: {keys_text}")
+                else:
+                    self.key_suggestion_label.setText("Possible keys: All keys contain this note")
+                    
+        except Exception as e:
+            print(f"Error in single note analysis: {e}")
+            self._clear_analysis_display()
+    
+    def _update_harmonic_analysis(self, pitches: List[int], chord):
+        """Update harmonic analysis for detected chord"""
+        try:
+            from src.music_theory import analyze_harmony
+            
+            # Calculate intervals from root
+            intervals = [(p % 12) for p in pitches]
+            unique_intervals = sorted(set(intervals))
+            root_interval = unique_intervals[0]
+            normalized_intervals = [(i - root_interval) % 12 for i in unique_intervals]
+            
+            # Create interval description
+            interval_names = {0: "R", 1: "b9", 2: "9", 3: "m3", 4: "M3", 5: "11", 6: "b5", 
+                             7: "5", 8: "#5", 9: "13", 10: "b7", 11: "M7"}
+            
+            interval_desc = [interval_names.get(i, str(i)) for i in normalized_intervals]
+            
+            if hasattr(self, 'interval_analysis_label'):
+                self.interval_analysis_label.setText(f"Intervals: {' - '.join(interval_desc)}")
+            
+            # Key analysis
+            if hasattr(self, 'key_suggestion_label'):
+                analysis = analyze_harmony(pitches)
+                if analysis["key_suggestions"]:
+                    keys_text = ", ".join(analysis["key_suggestions"][:4])
+                    self.key_suggestion_label.setText(f"Likely keys: {keys_text}")
+                else:
+                    self.key_suggestion_label.setText("Key analysis: Complex harmony")
+                    
+        except Exception as e:
+            print(f"Error in harmonic analysis: {e}")
+            if hasattr(self, 'interval_analysis_label'):
+                self.interval_analysis_label.setText("Analysis error")
+            if hasattr(self, 'key_suggestion_label'):
+                self.key_suggestion_label.setText("Key analysis: Error")
+    
+    def _update_unrecognized_analysis(self, pitches: List[int]):
+        """Update analysis for unrecognized chord patterns"""
+        try:
+            from src.music_theory import analyze_harmony
+            
+            # Basic interval analysis
+            intervals = [(p % 12) for p in pitches]
+            unique_intervals = sorted(set(intervals))
+            root_interval = unique_intervals[0]
+            normalized_intervals = [(i - root_interval) % 12 for i in unique_intervals]
+            
+            # Simplified interval description for complex chords
+            basic_intervals = []
+            if 3 in normalized_intervals:
+                basic_intervals.append("m3")
+            if 4 in normalized_intervals:
+                basic_intervals.append("M3")
+            if 7 in normalized_intervals:
+                basic_intervals.append("5th")
+            elif 6 in normalized_intervals:
+                basic_intervals.append("b5")
+            elif 8 in normalized_intervals:
+                basic_intervals.append("#5")
+            if 10 in normalized_intervals:
+                basic_intervals.append("b7")
+            if 11 in normalized_intervals:
+                basic_intervals.append("M7")
+            
+            if hasattr(self, 'interval_analysis_label'):
+                if basic_intervals:
+                    self.interval_analysis_label.setText(f"Contains: {', '.join(basic_intervals)}")
+                else:
+                    self.interval_analysis_label.setText(f"Complex: {len(normalized_intervals)} different notes")
+            
+            # Key analysis for complex chords
+            if hasattr(self, 'key_suggestion_label'):
+                analysis = analyze_harmony(pitches)
+                if analysis["key_suggestions"]:
+                    keys_text = ", ".join(analysis["key_suggestions"][:3])
+                    self.key_suggestion_label.setText(f"Possible keys: {keys_text}")
+                else:
+                    self.key_suggestion_label.setText("Key analysis: Very complex harmony")
+                    
+        except Exception as e:
+            print(f"Error in unrecognized analysis: {e}")
+            if hasattr(self, 'interval_analysis_label'):
+                self.interval_analysis_label.setText("Complex harmony")
+            if hasattr(self, 'key_suggestion_label'):
+                self.key_suggestion_label.setText("Key analysis: Unknown")
 
 
 class PianoKeyboardDisplay(QWidget):
