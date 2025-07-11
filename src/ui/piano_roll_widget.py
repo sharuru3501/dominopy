@@ -5,6 +5,7 @@ from PySide6.QtGui import QPainter, QColor, QFont, QPen, QBrush, QPolygonF
 from typing import List
 
 from src.midi_data_model import MidiProject, MidiNote
+from src.playback_engine import PlaybackState
 from src.command_system import (
     CommandHistory, AddNoteCommand, DeleteNoteCommand, MoveNoteCommand,
     ResizeNoteCommand, DeleteMultipleNotesCommand, PasteNotesCommand, CutNotesCommand
@@ -76,13 +77,11 @@ class PianoRollWidget(QWidget):
         # Enable focus to receive keyboard events
         self.setFocusPolicy(Qt.StrongFocus)
         
-        # Timer for playback updates
-        self.playback_update_timer = QTimer()
-        self.playback_update_timer.timeout.connect(self._update_playback_state)
-        self.playback_update_timer.start(50)  # Update every 50ms
-
         # Initialize with default empty project state
         self.set_midi_project(None)
+        
+        # Playback engine connection (will be connected after main window initializes it)
+        self.playback_engine = None
         
         # Force initial update to show playhead
         self.update() 
@@ -213,7 +212,8 @@ class PianoRollWidget(QWidget):
         painter.end()
 
     def _tick_to_x(self, tick: int) -> float:
-        return (tick - self.visible_start_tick) * self.pixels_per_tick
+        x_coord = (tick - self.visible_start_tick) * self.pixels_per_tick
+        return x_coord
 
     def _pitch_to_y(self, pitch: int) -> float:
         # Map MIDI pitch to Y-coordinate. Higher pitch should be higher on screen.
@@ -226,13 +226,14 @@ class PianoRollWidget(QWidget):
     def _x_to_tick(self, x: int) -> int:
         grid_start_x = self.piano_width if self.show_piano_keyboard else 0
         adjusted_x = x - grid_start_x
-        return int(adjusted_x / self.pixels_per_tick) + self.visible_start_tick
+        tick = int(adjusted_x / self.pixels_per_tick) + self.visible_start_tick
+        return tick
 
     def _y_to_pitch(self, y: int) -> int:
         # Invert the _pitch_to_y logic with vertical offset
         # y = height - ((pitch + 1) * pixels_per_pitch) + vertical_offset
         # pitch = ((height - y + vertical_offset) / pixels_per_pitch) - 1
-        pitch = int(((self.height() - y + self.vertical_offset) / self.pixels_per_pitch) - 1)
+        pitch = int((self.height() - y + self.vertical_offset) / self.pixels_per_pitch)
         # Clamp pitch to valid MIDI range
         return max(0, min(127, pitch))
 
@@ -348,6 +349,10 @@ class PianoRollWidget(QWidget):
         if track_note_pairs:
             command = DeleteMultipleNotesCommand(track_note_pairs)
             self.command_history.execute_command(command)
+            
+            # Update playback engine after deletion
+            self._update_playback_engine()
+            
             self.selected_notes = [] # Clear selection
             self.update() # Repaint
     def _delete_selected_notes(self):
@@ -443,10 +448,9 @@ class PianoRollWidget(QWidget):
         elif event.key() == Qt.Key_Return or event.key() == Qt.Key_Enter:
             self._toggle_playback()
         
-        # Space key: Move playhead to beginning
+        # Space key: Toggle playback
         elif event.key() == Qt.Key_Space:
-            self.playhead_position = 0
-            self.update()
+            self._toggle_playback()
         
         # Comma: Move playhead to previous measure
         elif event.key() == Qt.Key_Comma:
@@ -463,46 +467,11 @@ class PianoRollWidget(QWidget):
         print("PianoRoll: _toggle_playback called")
         
         # Try multiple methods to find the playback system
-        main_window = self.parent()
-        attempts = 0
-        while main_window and attempts < 10:  # Prevent infinite loop
-            attempts += 1
-            print(f"PianoRoll: Checking parent {attempts}: {type(main_window).__name__}")
-            
-            # Check for different possible method names
-            if hasattr(main_window, 'toggle_playback'):
-                print("PianoRoll: Found toggle_playback method")
-                main_window.toggle_playback()
-                return
-            elif hasattr(main_window, '_toggle_playback'):
-                print("PianoRoll: Found _toggle_playback method")
-                main_window._toggle_playback()
-                return
-            elif hasattr(main_window, 'play_pause_action'):
-                print("PianoRoll: Found play_pause_action")
-                main_window.play_pause_action.trigger()
-                return
-            elif hasattr(main_window, 'playback_controls'):
-                if hasattr(main_window.playback_controls, 'toggle_playback'):
-                    print("PianoRoll: Found playback_controls.toggle_playback")
-                    main_window.playback_controls.toggle_playback()
-                    return
-            main_window = main_window.parent()
-        
-        # Direct engine access fallback
-        print("PianoRoll: Trying direct engine access")
-        from src.playback_engine import get_playback_engine
-        engine = get_playback_engine()
-        if engine:
-            print(f"PianoRoll: Found engine, current state: {engine.get_state()}")
-            engine.toggle_play_pause()
-            print(f"PianoRoll: After toggle, state: {engine.get_state()}")
-            return
-        
-        # Final fallback: toggle local state
-        self.is_playing = not self.is_playing
-        self.update()
-        print(f"Playback toggle requested (local state only: {'Playing' if self.is_playing else 'Stopped'})")
+        main_window = self.parentWidget()
+        if hasattr(main_window, 'toggle_playback'):
+            main_window.toggle_playback()
+        else:
+            print("PianoRoll: Could not find toggle_playback method on parent.")
     
     def _move_playhead_to_measure(self, direction: int):
         """Move playhead to nearest measure line (direction: -1 for previous, 1 for next)"""
@@ -596,6 +565,10 @@ class PianoRollWidget(QWidget):
         if track_note_pairs:
             command = CutNotesCommand(track_note_pairs)
             self.command_history.execute_command(command)
+            
+            # Update playback engine after cutting
+            self._update_playback_engine()
+            
             self.selected_notes = [] # Clear selection after cutting
             self.update()
     def _paste_notes(self):
@@ -643,6 +616,9 @@ class PianoRollWidget(QWidget):
             command = PasteNotesCommand(self.midi_project.tracks[0], notes_to_paste)
             self.command_history.execute_command(command)
             
+            # Update playback engine after pasting
+            self._update_playback_engine()
+            
             # Select pasted notes
             self.selected_notes = notes_to_paste
             
@@ -657,6 +633,9 @@ class PianoRollWidget(QWidget):
     def _undo(self):
         """Undo last operation"""
         if self.command_history.undo():
+            # Update playback engine after undo
+            self._update_playback_engine()
+            
             self.selected_notes = [] # Clear selection after undo
             self.update()
         else:
@@ -665,6 +644,9 @@ class PianoRollWidget(QWidget):
     def _redo(self):
         """Redo last undone operation"""
         if self.command_history.redo():
+            # Update playback engine after redo
+            self._update_playback_engine()
+            
             self.selected_notes = [] # Clear selection after redo
             self.update()
         else:
@@ -769,7 +751,7 @@ class PianoRollWidget(QWidget):
             if self.midi_project is None:
                 self.set_midi_project(MidiProject()) # This will also add a default track
 
-            default_duration_ticks = self.midi_project.ticks_per_beat if self.midi_project else 480
+            default_duration_ticks = self.quantize_grid_ticks
             new_note = MidiNote(
                 pitch=clicked_pitch,
                 start_tick=clicked_tick,
@@ -782,6 +764,9 @@ class PianoRollWidget(QWidget):
             if self.midi_project and self.midi_project.tracks:
                 command = AddNoteCommand(self.midi_project.tracks[0], new_note)
                 self.command_history.execute_command(command)
+                
+                # Update playback engine with new note
+                self._update_playback_engine()
                 
                 # Play audio feedback for the new note
                 audio_manager = get_audio_manager()
@@ -958,6 +943,10 @@ class PianoRollWidget(QWidget):
                 self.dragging_note.pitch
             )
             self.command_history.execute_command(command)
+            
+            # Update playback engine after moving note
+            self._update_playback_engine()
+            
             delattr(self, '_drag_original_start_tick')
             delattr(self, '_drag_original_pitch')
         
@@ -971,6 +960,10 @@ class PianoRollWidget(QWidget):
                 self.resizing_note.end_tick
             )
             self.command_history.execute_command(command)
+            
+            # Update playback engine after resizing note
+            self._update_playback_engine()
+            
             delattr(self, '_resize_original_start_tick')
             delattr(self, '_resize_original_end_tick')
         
@@ -1082,7 +1075,7 @@ class PianoRollWidget(QWidget):
         """Draw the playhead line"""
         painter.save()
         
-        # Calculate playhead x position
+        # Calculate playhead x position (add grid offset for proper alignment)
         playhead_x = self._tick_to_x(self.playhead_position) + grid_start_x
         
         # Only skip drawing if playhead is way off screen
@@ -1193,26 +1186,24 @@ class PianoRollWidget(QWidget):
         self.playhead_position = position
         self.update()
     
-    def set_playing_state(self, is_playing: bool):
+    def connect_playback_engine(self, engine):
+        """Connect to the playback engine signals"""
+        self.playback_engine = engine
+        if self.playback_engine:
+            self.playback_engine.position_changed.connect(self.set_playhead_position)
+            self.playback_engine.state_changed.connect(self.set_playing_state)
+            print("PianoRollWidget: Connected to playback engine signals.")
+
+    def set_playing_state(self, state: PlaybackState):
         """Set playing state from external source"""
-        self.is_playing = is_playing
+        self.is_playing = (state == PlaybackState.PLAYING)
         self.update()
     
-    def _update_playback_state(self):
-        """Update playback state from playback engine"""
-        from src.playback_engine import get_playback_engine
-        
-        engine = get_playback_engine()
-        if engine:
-            old_position = self.playhead_position
-            old_playing = self.is_playing
-            
-            self.playhead_position = engine.get_current_tick()
-            self.is_playing = engine.is_playing()
-            
-            # Only update if something changed
-            if old_position != self.playhead_position or old_playing != self.is_playing:
-                self.update()
+    def _update_playback_engine(self):
+        """Update playback engine with current project state"""
+        if self.playback_engine and self.midi_project:
+            # Preserve current playhead position during update
+            self.playback_engine.set_project(self.midi_project, preserve_position=True)
     
     def _zoom_horizontal(self, zoom_factor: float, center_x: float):
         """Zoom horizontally around the specified center point"""

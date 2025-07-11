@@ -105,13 +105,10 @@ class FluidSynthAudio(QObject):
         if self.settings.soundfont_path and os.path.exists(self.settings.soundfont_path):
             return self.settings.soundfont_path
         
-        # Try default locations
-        for path in self.default_soundfont_paths:
-            if os.path.exists(path):
-                return path
-        
-        # Try to find any .sf2 file in common locations
+        # First, try to find any .sf2 file in local locations (preferred)
         search_paths = [
+            "soundfonts/",
+            "./soundfonts/",
             "/usr/share/sounds/sf2/",
             "/usr/share/soundfonts/",
             os.path.expanduser("~/soundfonts/"),
@@ -122,7 +119,15 @@ class FluidSynthAudio(QObject):
             if os.path.exists(search_path):
                 for file in os.listdir(search_path):
                     if file.endswith('.sf2'):
-                        return os.path.join(search_path, file)
+                        sf2_path = os.path.join(search_path, file)
+                        # Skip very small files (likely placeholders)
+                        if os.path.getsize(sf2_path) > 10000:  # At least 10KB
+                            return sf2_path
+        
+        # Fallback to default locations (may not be compatible)
+        for path in self.default_soundfont_paths:
+            if os.path.exists(path):
+                return path
         
         return None
     
@@ -307,7 +312,9 @@ class AudioManager(QObject):
             self.fluidsynth_audio.audio_ready.connect(self._on_audio_ready)
             self.fluidsynth_audio.audio_error.connect(self._on_audio_error)
             
-            if self.fluidsynth_audio.initialize():
+            fs_init_success = self.fluidsynth_audio.initialize()
+            print(f"FluidSynthAudio.initialize() returned: {fs_init_success}")
+            if fs_init_success:
                 self.use_fluidsynth = True
                 success = True
                 print("Using FluidSynth for audio playback")
@@ -315,16 +322,29 @@ class AudioManager(QObject):
         # Try macOS native audio as fallback
         if not success and sys.platform == "darwin" and MACOS_AUDIO_AVAILABLE:
             try:
-                self.macos_audio = MacOSSystemAudio()
+                # Prioritize MacOSAudioEngine for proper MIDI playback
+                self.macos_audio = MacOSAudioEngine()
                 self.macos_audio.audio_ready.connect(self._on_audio_ready)
                 self.macos_audio.audio_error.connect(self._on_audio_error)
                 
-                if self.macos_audio.initialize():
+                macos_engine_init_success = self.macos_audio.initialize()
+                print(f"MacOSAudioEngine.initialize() returned: {macos_engine_init_success}")
+                if macos_engine_init_success:
                     self.use_fluidsynth = False
                     success = True
-                    print("Using macOS system audio for playback")
+                    print("Using macOS AVAudioEngine for playback")
             except Exception as e:
-                print(f"macOS audio failed: {e}")
+                print(f"macOS AVAudioEngine failed: {e}")
+                # Fallback to MacOSSystemAudio if AVAudioEngine fails
+                try:
+                    macos_system_init_success = self.macos_audio.initialize()
+                    print(f"MacOSSystemAudio.initialize() returned: {macos_system_init_success}")
+                    if macos_system_init_success:
+                        self.use_fluidsynth = False
+                        success = True
+                        print("Using macOS system audio for playback (fallback)")
+                except Exception as e:
+                    print(f"macOS system audio failed: {e}")
         
         # Final fallback to MIDI output (silent but functional)
         if not success:
@@ -341,28 +361,31 @@ class AudioManager(QObject):
             self.audio_ready.emit()
             # Start timer only after successful initialization
             self.note_stop_timer.start(50)  # Check every 50ms
+            print("AudioManager: Audio system initialized successfully.")
         else:
-            print("No audio output available")
+            print("AudioManager: No audio output available")
         
         return success
-    
+        
     def play_note_preview(self, pitch: int, velocity: int = 100) -> bool:
-        """Play a note preview (for note input)"""
+        """Play a note for preview purposes (e.g., piano roll click)"""
         success = False
         
         # Try macOS audio first
-        if hasattr(self, 'macos_audio') and self.macos_audio:
+        if MACOS_AUDIO_AVAILABLE and hasattr(self, 'macos_audio') and self.macos_audio:
             success = self.macos_audio.play_note(self.current_channel, pitch, velocity)
+            if success: print(f"AudioManager: Preview via macOS Audio (pitch={pitch})")
         # Try FluidSynth
         elif self.use_fluidsynth and self.fluidsynth_audio:
             success = self.fluidsynth_audio.play_note(self.current_channel, pitch, velocity)
+            if success: print(f"AudioManager: Preview via FluidSynth (pitch={pitch})")
         # Fallback to MIDI output
         elif self.midi_device:
             success = self.midi_device.send_note_on(self.current_channel, pitch, velocity)
+            if success: print(f"AudioManager: Preview via MIDI Output (pitch={pitch})")
         
         if success:
-            self.active_notes[pitch] = time.time()
-        
+            self.active_notes[pitch] = time.time()  # Store start time for auto-stop
         return success
     
     def play_note_immediate(self, pitch: int, velocity: int = 100) -> bool:
@@ -370,14 +393,17 @@ class AudioManager(QObject):
         success = False
         
         # Try macOS audio first
-        if hasattr(self, 'macos_audio') and self.macos_audio:
+        if MACOS_AUDIO_AVAILABLE and hasattr(self, 'macos_audio') and self.macos_audio:
             success = self.macos_audio.play_note(self.current_channel, pitch, velocity)
+            if success: print(f"AudioManager: Immediate play via macOS Audio (pitch={pitch})")
         # Try FluidSynth
         elif self.use_fluidsynth and self.fluidsynth_audio:
             success = self.fluidsynth_audio.play_note(self.current_channel, pitch, velocity)
+            if success: print(f"AudioManager: Immediate play via FluidSynth (pitch={pitch})")
         # Fallback to MIDI output
         elif self.midi_device:
             success = self.midi_device.send_note_on(self.current_channel, pitch, velocity)
+            if success: print(f"AudioManager: Immediate play via MIDI Output (pitch={pitch})")
         
         # Don't add to active_notes for auto-stop (playback engine handles timing)
         return success
@@ -387,14 +413,17 @@ class AudioManager(QObject):
         success = False
         
         # Try macOS audio first
-        if hasattr(self, 'macos_audio') and self.macos_audio:
+        if MACOS_AUDIO_AVAILABLE and hasattr(self, 'macos_audio') and self.macos_audio:
             success = self.macos_audio.stop_note(self.current_channel, pitch)
+            if success: print(f"AudioManager: Immediate stop via macOS Audio (pitch={pitch})")
         # Try FluidSynth
         elif self.use_fluidsynth and self.fluidsynth_audio:
             success = self.fluidsynth_audio.stop_note(self.current_channel, pitch)
+            if success: print(f"AudioManager: Immediate stop via FluidSynth (pitch={pitch})")
         # Fallback to MIDI output
         elif self.midi_device:
             success = self.midi_device.send_note_off(self.current_channel, pitch)
+            if success: print(f"AudioManager: Immediate stop via MIDI Output (pitch={pitch})")
         
         # Don't modify active_notes (playback engine handles timing)
         return success
@@ -404,18 +433,20 @@ class AudioManager(QObject):
         success = False
         
         # Try macOS audio first
-        if hasattr(self, 'macos_audio') and self.macos_audio:
+        if MACOS_AUDIO_AVAILABLE and hasattr(self, 'macos_audio') and self.macos_audio:
             success = self.macos_audio.stop_note(self.current_channel, pitch)
+            if success: print(f"AudioManager: Preview stop via macOS Audio (pitch={pitch})")
         # Try FluidSynth
         elif self.use_fluidsynth and self.fluidsynth_audio:
             success = self.fluidsynth_audio.stop_note(self.current_channel, pitch)
+            if success: print(f"AudioManager: Preview stop via FluidSynth (pitch={pitch})")
         # Fallback to MIDI output
         elif self.midi_device:
             success = self.midi_device.send_note_off(self.current_channel, pitch)
+            if success: print(f"AudioManager: Preview stop via MIDI Output (pitch={pitch})")
         
         if success and pitch in self.active_notes:
             del self.active_notes[pitch]
-        
         return success
     
     def _stop_preview_notes(self):
@@ -485,7 +516,9 @@ def initialize_audio_manager(settings: AudioSettings) -> bool:
         audio_manager.cleanup()
     
     audio_manager = AudioManager(settings)
-    return audio_manager.initialize()
+    init_success = audio_manager.initialize()
+    print(f"initialize_audio_manager() returning: {init_success}")
+    return init_success
 
 def cleanup_audio_manager():
     """Clean up the global audio manager"""

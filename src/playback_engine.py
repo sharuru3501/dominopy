@@ -133,7 +133,7 @@ class PlaybackEngine(QObject):
         self.events.sort(key=lambda event: event.timestamp)
         self.next_event_index = 0
         
-        print(f"Prepared {len(self.events)} playback events")
+        print(f"Prepared {len(self.events)} playback events. First event: {self.events[0] if self.events else 'N/A'}")
     
     def play(self):
         """Start or resume playback"""
@@ -159,7 +159,7 @@ class PlaybackEngine(QObject):
         self.timer.start(self.timer_interval)
         self.state_changed.emit(self.state)
         
-        print(f"Playback started from tick {self.current_tick}")
+        print(f"Playback started from tick {self.current_tick}. start_time: {self.start_time}")
     
     def pause(self):
         """Pause playback"""
@@ -278,19 +278,25 @@ class PlaybackEngine(QObject):
         """Schedule a MIDI event for playback"""
         audio_manager = get_audio_manager()
         if not audio_manager:
+            print("PlaybackEngine: AudioManager not available.")
             return
         
         if event.event_type == "note_on":
             success = audio_manager.play_note_immediate(event.note.pitch, event.note.velocity)
             if success:
                 self.active_notes.add(event.note.pitch)
-                print(f"Playing note {event.note.pitch} at tick {event.tick}")
+                print(f"PlaybackEngine: Playing note {event.note.pitch} at tick {event.tick}, velocity {event.note.velocity}")
+            else:
+                print(f"PlaybackEngine: Failed to play note {event.note.pitch} at tick {event.tick}")
         
         elif event.event_type == "note_off":
             if event.note.pitch in self.active_notes:
-                audio_manager.stop_note_immediate(event.note.pitch)
-                self.active_notes.discard(event.note.pitch)
-                print(f"Stopping note {event.note.pitch} at tick {event.tick}")
+                success = audio_manager.stop_note_immediate(event.note.pitch)
+                if success:
+                    self.active_notes.discard(event.note.pitch)
+                    print(f"PlaybackEngine: Stopping note {event.note.pitch} at tick {event.tick}")
+                else:
+                    print(f"PlaybackEngine: Failed to stop note {event.note.pitch} at tick {event.tick}")
     
     def _stop_all_notes(self):
         """Stop all currently playing notes"""

@@ -88,6 +88,13 @@ class PyDominoMainWindow(QMainWindow):
         open_action = file_menu.addAction("&Open...")
         open_action.triggered.connect(self._open_midi_file)
         
+        file_menu.addSeparator()
+        
+        # Add test MIDI data creation
+        create_test_action = file_menu.addAction("Create &Test Song")
+        create_test_action.setToolTip("Create a simple test song for playback testing")
+        create_test_action.triggered.connect(self._create_test_song)
+        
         # Audio Menu
         audio_menu = menu_bar.addMenu("&Audio")
         
@@ -155,6 +162,10 @@ class PyDominoMainWindow(QMainWindow):
                     
                     # Set project in music info widget
                     self.music_info_widget.set_project(midi_project)
+                    
+                    # Update horizontal scrollbar maximum based on project length
+                    self.h_scrollbar.setMaximum(self.piano_roll.visible_end_tick)
+                    self.h_scrollbar.setValue(0) # Reset horizontal scroll to beginning
                     
                     self.setWindowTitle(f"PyDomino - {file_path}")
                     self.status_bar.update_project_name(file_path.split('/')[-1])
@@ -338,11 +349,12 @@ class PyDominoMainWindow(QMainWindow):
         )
         
         # Initialize audio manager
-        success = initialize_audio_manager(audio_settings)
-        if success:
+        init_result = initialize_audio_manager(audio_settings)
+        if init_result:
             print("Audio system initialized successfully")
         else:
             print("Warning: Audio system initialization failed")
+        print(f"_initialize_audio_system() received: {init_result}")
     
     def closeEvent(self, event):
         """Handle window close event"""
@@ -435,7 +447,7 @@ class PyDominoMainWindow(QMainWindow):
         engine.state_changed.connect(self._on_playback_state_changed)
         
         # Connect piano roll to playback engine
-        self.piano_roll.connect_playback_engine()
+        self.piano_roll.connect_playback_engine(engine)
         
         print("Playback engine initialized")
     
@@ -448,7 +460,7 @@ class PyDominoMainWindow(QMainWindow):
     def _on_horizontal_scroll(self, value):
         """Handle horizontal scrollbar changes"""
         # Convert scrollbar value to horizontal offset in ticks
-        self.piano_roll.horizontal_offset = value * 10  # Scale factor for ticks
+        self.piano_roll.visible_start_tick = value
         self.piano_roll.update()
             
     def _on_playback_state_changed(self, state: PlaybackState):
@@ -557,4 +569,48 @@ class PyDominoMainWindow(QMainWindow):
             tempo_bpm = engine.get_tempo()
             
             self.playback_info_widget.update_playback_info(state, current_tick, tempo_bpm)
+    
+    def _create_test_song(self):
+        """Create a simple test song for playback verification"""
+        from src.midi_data_model import MidiProject, MidiTrack, MidiNote
+        
+        # Create new project
+        project = MidiProject()
+        project.ticks_per_beat = 480  # Standard MIDI resolution
+        
+        # Create a track
+        track = MidiTrack(name="Test Track")
+        
+        # Create a simple melody: C4-E4-G4-C5 progression
+        # Each note is one beat (480 ticks) long
+        test_notes = [
+            MidiNote(pitch=60, start_tick=0, end_tick=480, velocity=100),      # C4 - Beat 1
+            MidiNote(pitch=64, start_tick=480, end_tick=960, velocity=100),    # E4 - Beat 2  
+            MidiNote(pitch=67, start_tick=960, end_tick=1440, velocity=100),   # G4 - Beat 3
+            MidiNote(pitch=72, start_tick=1440, end_tick=1920, velocity=100),  # C5 - Beat 4
+            MidiNote(pitch=67, start_tick=1920, end_tick=2400, velocity=100),  # G4 - Beat 5
+            MidiNote(pitch=64, start_tick=2400, end_tick=2880, velocity=100),  # E4 - Beat 6
+            MidiNote(pitch=60, start_tick=2880, end_tick=3360, velocity=100),  # C4 - Beat 7
+        ]
+        
+        # Add notes to track
+        for note in test_notes:
+            track.notes.append(note)
+        
+        # Add track to project
+        project.add_track(track)
+        
+        # Set project in piano roll and playback engine
+        self.piano_roll.set_midi_project(project)
+        
+        # Update playback engine with new project
+        engine = get_playback_engine()
+        if engine:
+            engine.set_project(project)
+            print("Test song created and loaded into playback engine")
+        
+        # Update UI
+        self._update_project_ui(project)
+        
+        print("Test song created: C4-E4-G4-C5-G4-E4-C4 melody")
 

@@ -33,19 +33,20 @@ def load_midi_file(file_path: str) -> MidiProject:
             if msg.type in ['note_on', 'note_off']:
                 if msg.type == 'note_on':
                     if msg.velocity > 0:
-                        # Store note_on event
+                        # Store note_on event with its velocity
                         if msg.note not in note_on_events:
                             note_on_events[msg.note] = {}
-                        note_on_events[msg.note][msg.channel] = current_tick
+                        note_on_events[msg.note][msg.channel] = {'start_tick': current_tick, 'velocity': msg.velocity}
                     else: # msg.velocity == 0, treated as note_off
                         # Find corresponding note_on and create MidiNote
                         if msg.note in note_on_events and msg.channel in note_on_events[msg.note]:
-                            start_tick = note_on_events[msg.note][msg.channel]
+                            start_tick = note_on_events[msg.note][msg.channel]['start_tick']
+                            velocity = note_on_events[msg.note][msg.channel]['velocity']
                             note = MidiNote(
                                 pitch=msg.note,
                                 start_tick=start_tick,
                                 end_tick=current_tick,
-                                velocity=0, # Velocity is 0 for note_on with velocity 0
+                                velocity=velocity,
                                 channel=msg.channel
                             )
                             new_track.notes.append(note)
@@ -55,12 +56,13 @@ def load_midi_file(file_path: str) -> MidiProject:
                 elif msg.type == 'note_off':
                     # Find corresponding note_on and create MidiNote
                     if msg.note in note_on_events and msg.channel in note_on_events[msg.note]:
-                        start_tick = note_on_events[msg.note][msg.channel]
+                        start_tick = note_on_events[msg.note][msg.channel]['start_tick']
+                        velocity = note_on_events[msg.note][msg.channel]['velocity']
                         note = MidiNote(
                             pitch=msg.note,
                             start_tick=start_tick,
                             end_tick=current_tick,
-                            velocity=msg.velocity, # Use note_off velocity
+                            velocity=velocity,
                             channel=msg.channel
                         )
                         new_track.notes.append(note)
