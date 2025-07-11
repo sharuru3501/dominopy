@@ -304,13 +304,6 @@ class PyDominoMainWindow(QMainWindow):
         toolbar.addAction(self.rewind_action)
         
         # Keep the rest of toolbar actions minimal
-        toolbar.addSeparator()
-        
-        toggle_mode_action = QAction("⇄ Toggle", self)
-        toggle_mode_action.setShortcut("Tab")
-        toggle_mode_action.setToolTip("Toggle Edit Mode (Tab)")
-        toggle_mode_action.triggered.connect(self._toggle_mode)
-        toolbar.addAction(toggle_mode_action)
         
         # Store references for later use
         self.note_input_action = note_input_action
@@ -332,10 +325,6 @@ class PyDominoMainWindow(QMainWindow):
             self.selection_action.setChecked(True)
             return
         self.piano_roll.get_edit_mode_manager().set_mode(EditMode.SELECTION)
-    
-    def _toggle_mode(self):
-        """Toggle between modes"""
-        self.piano_roll.get_edit_mode_manager().toggle_mode()
     
     def _on_mode_changed(self, mode: EditMode):
         """Handle mode change to update toolbar buttons"""
