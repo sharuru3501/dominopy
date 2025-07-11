@@ -488,12 +488,21 @@ class PianoRollWidget(QWidget):
         """Toggle playback state"""
         print("PianoRoll: _toggle_playback called")
         
-        # Try multiple methods to find the playback system
-        main_window = self.parentWidget()
-        if hasattr(main_window, 'toggle_playback'):
+        # Find the main window by traversing the widget hierarchy
+        widget = self
+        main_window = None
+        
+        while widget:
+            widget = widget.parentWidget()
+            if widget and hasattr(widget, 'toggle_playback'):
+                main_window = widget
+                break
+        
+        if main_window:
+            print("PianoRoll: Found main window, calling toggle_playback")
             main_window.toggle_playback()
         else:
-            print("PianoRoll: Could not find toggle_playback method on parent.")
+            print("PianoRoll: Could not find main window with toggle_playback method")
     
     def _move_playhead_to_measure(self, direction: int):
         """Move playhead to nearest measure line (direction: -1 for previous, 1 for next)"""

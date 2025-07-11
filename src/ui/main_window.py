@@ -120,8 +120,7 @@ class PyDominoMainWindow(QMainWindow):
         playback_menu.addSeparator()
         
         play_pause_action = playback_menu.addAction("&Play/Pause")
-        play_pause_action.setShortcut("Space")
-        play_pause_action.setToolTip("Toggle playback")
+        play_pause_action.setToolTip("Toggle playback (Space key)")
         play_pause_action.triggered.connect(self._toggle_playback)
         
         # Edit Menu
