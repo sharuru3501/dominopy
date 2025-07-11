@@ -13,6 +13,8 @@ from src.edit_modes import EditMode
 from src.audio_system import initialize_audio_manager, cleanup_audio_manager, AudioSettings
 from src.playback_engine import initialize_playback_engine, cleanup_playback_engine, get_playback_engine, PlaybackState
 from src.midi_routing import initialize_midi_routing, cleanup_midi_routing, get_midi_routing_manager
+from src.track_manager import initialize_track_manager, cleanup_track_manager, get_track_manager
+from src.ui.track_list_widget import TrackListWidget
 
 class PyDominoMainWindow(QMainWindow):
     def __init__(self):
@@ -26,7 +28,9 @@ class PyDominoMainWindow(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0) # Remove margins
         main_layout.setSpacing(0) # Remove spacing between widgets
 
-        # Remove the piano keyboard widget - we'll use the built-in one in piano roll
+        # Track List Widget (left side)
+        self.track_list = TrackListWidget()
+        main_layout.addWidget(self.track_list)
 
         # Piano Roll Widget with custom scrollbars
         self.piano_roll = PianoRollWidget()
@@ -78,6 +82,7 @@ class PyDominoMainWindow(QMainWindow):
         # Initialize systems (delayed to ensure QApplication is ready)
         QTimer.singleShot(50, self._initialize_audio_system)
         QTimer.singleShot(100, self._initialize_midi_routing)
+        QTimer.singleShot(125, self._initialize_track_manager)
         QTimer.singleShot(150, self._initialize_playback_engine)
         QTimer.singleShot(200, self._connect_ui_signals)
 
@@ -178,6 +183,11 @@ class PyDominoMainWindow(QMainWindow):
                     engine = get_playback_engine()
                     if engine:
                         engine.set_project(midi_project)
+                    
+                    # Set project in track manager
+                    track_manager = get_track_manager()
+                    if track_manager:
+                        track_manager.set_project(midi_project)
                     
                     # Update UI with project settings
                     self._update_project_ui(midi_project)
@@ -381,6 +391,25 @@ class PyDominoMainWindow(QMainWindow):
         else:
             print("Warning: MIDI routing system initialization failed")
     
+    def _initialize_track_manager(self):
+        """Initialize the track manager system"""
+        # Initialize with no project initially
+        track_manager = initialize_track_manager()
+        
+        # Connect track list widget to track manager
+        self.track_list.set_track_manager(track_manager)
+        
+        # Connect track selection to piano roll
+        self.track_list.track_selected.connect(self._on_track_selected)
+        
+        print("Track manager initialized successfully")
+    
+    def _on_track_selected(self, track_index: int):
+        """Handle track selection"""
+        print(f"Track {track_index} selected")
+        # Piano roll will be updated to show only this track's notes
+        self.piano_roll.update()  # Refresh display
+    
     def closeEvent(self, event):
         """Handle window close event"""
         # Clean up playback engine
@@ -390,6 +419,10 @@ class PyDominoMainWindow(QMainWindow):
         # Clean up MIDI routing system
         cleanup_midi_routing()
         print("MIDI routing system cleaned up")
+        
+        # Clean up track manager
+        cleanup_track_manager()
+        print("Track manager cleaned up")
         
         # Clean up audio system
         cleanup_audio_manager()
@@ -666,6 +699,11 @@ class PyDominoMainWindow(QMainWindow):
         if engine:
             engine.set_project(project)
             print("Test song created and loaded into playback engine")
+        
+        # Update track manager with new project
+        track_manager = get_track_manager()
+        if track_manager:
+            track_manager.set_project(project)
         
         # Update UI
         self._update_project_ui(project)
