@@ -333,6 +333,13 @@ class PianoRollWidget(QWidget):
     def mouseReleaseEvent(self, event):
         if self.dragging_playhead:
             self.dragging_playhead = False
+            
+            # Sync playhead position with playback engine
+            if self.playback_engine:
+                self.playback_engine.seek_to_tick(self.playhead_position)
+            
+            # Play notes at the new playhead position
+            self._play_notes_at_playhead()
         elif self.edit_mode_manager.is_note_input_mode():
             self._handle_note_input_mode_release(event)
         elif self.edit_mode_manager.is_selection_mode():
@@ -481,6 +488,9 @@ class PianoRollWidget(QWidget):
             self.playback_engine.seek_to_tick(0)
             print("Seeked to tick 0")
         
+        # Play notes at the beginning position
+        self._play_notes_at_playhead()
+        
         # Update display
         self.update()
     
@@ -524,6 +534,9 @@ class PianoRollWidget(QWidget):
         if self.playback_engine:
             self.playback_engine.seek_to_tick(self.playhead_position)
             print(f"Moved playhead to measure, tick: {self.playhead_position}")
+        
+        # Play notes at the new position
+        self._play_notes_at_playhead()
         
         self.update()
     
