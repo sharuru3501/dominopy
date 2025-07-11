@@ -208,6 +208,20 @@ class AudioSourceManager(QObject):
             return False
         
         self.track_sources[track_index] = source_id
+        
+        # For soundfont sources, apply track-specific program
+        source = self.available_sources[source_id]
+        if source.source_type == AudioSourceType.SOUNDFONT:
+            try:
+                from src.track_manager import DEFAULT_TRACK_PROGRAMS
+                if track_index < len(DEFAULT_TRACK_PROGRAMS):
+                    # Update the source with track-specific program
+                    source.program = DEFAULT_TRACK_PROGRAMS[track_index]
+                    source.channel = track_index % 16
+                    print(f"Applied track {track_index} program {source.program} to soundfont {source.name}")
+            except ImportError:
+                pass
+        
         print(f"Assigned {source_id} to track {track_index}")
         return True
     
@@ -215,10 +229,42 @@ class AudioSourceManager(QObject):
         """Get the audio source assigned to a track"""
         source_id = self.track_sources.get(track_index)
         if source_id:
-            return self.available_sources.get(source_id)
+            source = self.available_sources.get(source_id)
+            if source:
+                # Apply track-specific program if using internal FluidSynth
+                if source.source_type == AudioSourceType.INTERNAL_FLUIDSYNTH:
+                    # Get track-specific program from track manager
+                    try:
+                        from src.track_manager import DEFAULT_TRACK_PROGRAMS
+                        if track_index < len(DEFAULT_TRACK_PROGRAMS):
+                            # Create a copy with track-specific program
+                            import copy
+                            track_source = copy.copy(source)
+                            track_source.program = DEFAULT_TRACK_PROGRAMS[track_index]
+                            track_source.channel = track_index % 16  # Use different channels
+                            return track_source
+                    except ImportError:
+                        pass
+                return source
         
         # Default to internal FluidSynth
-        return self.available_sources.get("internal_fluidsynth")
+        default_source = self.available_sources.get("internal_fluidsynth")
+        if default_source and track_index == 0:
+            return default_source
+        elif default_source:
+            # Create track-specific version for non-zero tracks
+            try:
+                from src.track_manager import DEFAULT_TRACK_PROGRAMS
+                if track_index < len(DEFAULT_TRACK_PROGRAMS):
+                    import copy
+                    track_source = copy.copy(default_source)
+                    track_source.program = DEFAULT_TRACK_PROGRAMS[track_index]
+                    track_source.channel = track_index % 16
+                    return track_source
+            except ImportError:
+                pass
+        
+        return default_source
     
     def get_track_source_id(self, track_index: int) -> str:
         """Get the source ID assigned to a track"""

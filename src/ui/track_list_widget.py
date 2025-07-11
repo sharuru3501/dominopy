@@ -265,6 +265,7 @@ class TrackItemWidget(QFrame):
     def _on_audio_source_selected(self, source_id: str):
         """Handle audio source selection"""
         from src.audio_source_manager import get_audio_source_manager
+        from src.per_track_audio_router import get_per_track_audio_router
         
         audio_source_manager = get_audio_source_manager()
         if audio_source_manager:
@@ -277,6 +278,17 @@ class TrackItemWidget(QFrame):
                     self.audio_source_label.setText(display_name)
                     self.audio_source_label.setToolTip(f"Audio Source: {source.name}")
                     print(f"Track {self.track_index} audio source changed to: {source.name}")
+                
+                # Reinitialize per-track audio for this track
+                per_track_router = get_per_track_audio_router()
+                if per_track_router:
+                    router_success = per_track_router.initialize_track_audio(self.track_index)
+                    if router_success:
+                        print(f"✅ Track {self.track_index} audio routing initialized for {source.name}")
+                    else:
+                        print(f"❌ Failed to initialize audio routing for track {self.track_index}")
+                else:
+                    print("❌ Per-track router not available")
 
 class TrackListWidget(QWidget):
     """Main track list widget with scrolling support"""
