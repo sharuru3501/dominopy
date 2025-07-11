@@ -756,8 +756,8 @@ class PyDominoMainWindow(QMainWindow):
         self._update_project_ui(project)
         
         print("🎨 Colorful test song created with notes in multiple tracks!")
-        print("   Piano (Red): Main melody C4-E4-G4-C5")
-        print("   Strings (Teal): Long harmony notes")
-        print("   Brass (Blue): Accent notes")
-        print("   Bass (Purple): Low bass notes")
+        print("   Track00 (Red): Main melody C4-E4-G4-C5")
+        print("   Track01 (Teal): Long harmony notes")
+        print("   Track02 (Blue): Accent notes")
+        print("   Track05 (Purple): Low bass notes")
 

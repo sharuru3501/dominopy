@@ -26,24 +26,24 @@ DEFAULT_TRACK_COLORS = [
     "#D5A6BD",  # Pink
 ]
 
-# Default track names (Domino-style orchestral setup)
+# Default track names (numbered format)
 DEFAULT_TRACK_NAMES = [
-    "Piano",
-    "Strings",
-    "Brass",
-    "Woodwinds", 
-    "Percussion",
-    "Bass",
-    "Guitar",
-    "Vocals",
-    "Track 9",
-    "Track 10",
-    "Track 11",
-    "Track 12",
-    "Track 13",
-    "Track 14",
-    "Track 15",
-    "Track 16",
+    "Track00",
+    "Track01",
+    "Track02",
+    "Track03",
+    "Track04",
+    "Track05",
+    "Track06",
+    "Track07",
+    "Track08",
+    "Track09",
+    "Track10",
+    "Track11",
+    "Track12",
+    "Track13",
+    "Track14",
+    "Track15",
 ]
 
 # Default MIDI programs (General MIDI instruments)
