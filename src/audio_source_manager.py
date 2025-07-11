@@ -125,18 +125,50 @@ class AudioSourceManager(QObject):
             available_ports = midi_out.get_ports()
             
             for i, port_name in enumerate(available_ports):
-                # Skip IAC Driver Bus (internal)
-                if "IAC Driver" not in port_name:
-                    source_id = f"midi_{i}"
-                    audio_source = AudioSource(
-                        id=source_id,
-                        name=port_name,
-                        source_type=AudioSourceType.EXTERNAL_MIDI,
-                        midi_port_name=port_name
-                    )
+                # Fix encoding issues for port names
+                try:
+                    # Handle the specific macOS encoding issue
+                    if isinstance(port_name, str):
+                        # Remove problematic Unicode characters
+                        import re
+                        # Replace common macOS garbage characters with readable names
+                        if "IAC" in port_name and ("Bus" in port_name or "„" in port_name):
+                            # Extract bus number if possible
+                            bus_match = re.search(r'(\d+)', port_name)
+                            if bus_match:
+                                clean_name = f"IAC Driver Bus {bus_match.group(1)}"
+                            else:
+                                clean_name = f"IAC Driver Bus {i+1}"
+                        elif "Dualshock" in port_name:
+                            clean_name = "Dualshock4 MIDI"
+                        elif "FluidSynth" in port_name:
+                            clean_name = f"FluidSynth Virtual Port {i}"
+                        else:
+                            # Remove all non-ASCII characters and clean up
+                            clean_name = re.sub(r'[^\x20-\x7E]', '', port_name)
+                            clean_name = re.sub(r'\s+', ' ', clean_name).strip()
+                            
+                            # If name becomes empty or too short, use a generic name
+                            if len(clean_name) < 3:
+                                clean_name = f"MIDI Device {i+1}"
+                    else:
+                        clean_name = f"MIDI Device {i+1}"
                     
-                    self.available_sources[source_id] = audio_source
-                    print(f"Discovered MIDI device: {port_name}")
+                except Exception as e:
+                    clean_name = f"MIDI Device {i+1}"
+                
+                # Skip IAC Driver Bus (but allow it for testing)
+                # if "IAC Driver" not in clean_name:
+                source_id = f"midi_{i}"
+                audio_source = AudioSource(
+                    id=source_id,
+                    name=clean_name,
+                    source_type=AudioSourceType.EXTERNAL_MIDI,
+                    midi_port_name=clean_name
+                )
+                
+                self.available_sources[source_id] = audio_source
+                print(f"Discovered MIDI device: {clean_name}")
             
             midi_out.close_port()
             del midi_out
