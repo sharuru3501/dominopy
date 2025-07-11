@@ -520,7 +520,10 @@ class PianoRollWidget(QWidget):
             target_measure = (self.playhead_position // ticks_per_measure) + 1
             self.playhead_position = target_measure * ticks_per_measure
         
-        # Just move playhead, no sound
+        # Sync with playback engine
+        if self.playback_engine:
+            self.playback_engine.seek_to_tick(self.playhead_position)
+            print(f"Moved playhead to measure, tick: {self.playhead_position}")
         
         self.update()
     
@@ -1460,6 +1463,7 @@ class PianoRollWidget(QWidget):
     def set_playhead_position(self, position: int):
         """Set playhead position from external source (like playback engine)"""
         self.playhead_position = position
+        # print(f"Piano roll playhead updated to: {position}")  # Debug log
         self.update()
     
     def connect_playback_engine(self, engine):
