@@ -14,6 +14,7 @@ from src.audio_system import initialize_audio_manager, cleanup_audio_manager, Au
 from src.playback_engine import initialize_playback_engine, cleanup_playback_engine, get_playback_engine, PlaybackState
 from src.midi_routing import initialize_midi_routing, cleanup_midi_routing, get_midi_routing_manager
 from src.track_manager import initialize_track_manager, cleanup_track_manager, get_track_manager
+from src.audio_source_manager import initialize_audio_source_manager, cleanup_audio_source_manager
 from src.ui.track_list_widget import TrackListWidget
 
 class PyDominoMainWindow(QMainWindow):
@@ -81,6 +82,7 @@ class PyDominoMainWindow(QMainWindow):
         
         # Initialize systems (delayed to ensure QApplication is ready)
         QTimer.singleShot(50, self._initialize_audio_system)
+        QTimer.singleShot(75, self._initialize_audio_source_manager)
         QTimer.singleShot(100, self._initialize_midi_routing)
         QTimer.singleShot(125, self._initialize_track_manager)
         QTimer.singleShot(150, self._initialize_playback_engine)
@@ -403,6 +405,21 @@ class PyDominoMainWindow(QMainWindow):
             print("Warning: Audio system initialization failed")
         print(f"_initialize_audio_system() received: {init_result}")
     
+    def _initialize_audio_source_manager(self):
+        """Initialize the audio source manager"""
+        import os
+        
+        # Get soundfont directory path
+        soundfont_directory = os.path.join(os.path.dirname(__file__), '..', '..', 'soundfonts')
+        soundfont_directory = os.path.abspath(soundfont_directory)
+        
+        # Initialize audio source manager
+        audio_source_manager = initialize_audio_source_manager(soundfont_directory)
+        
+        print(f"Audio source manager initialized with {len(audio_source_manager.get_available_sources())} sources")
+        print(f"  Soundfonts: {len(audio_source_manager.get_soundfont_sources())}")
+        print(f"  MIDI devices: {len(audio_source_manager.get_midi_sources())}")
+    
     def _initialize_midi_routing(self):
         """Initialize the MIDI routing system"""
         init_result = initialize_midi_routing()
@@ -457,6 +474,10 @@ class PyDominoMainWindow(QMainWindow):
         # Clean up track manager
         cleanup_track_manager()
         print("Track manager cleaned up")
+        
+        # Clean up audio source manager
+        cleanup_audio_source_manager()
+        print("Audio source manager cleaned up")
         
         # Clean up audio system
         cleanup_audio_manager()

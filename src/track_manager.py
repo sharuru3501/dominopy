@@ -5,6 +5,7 @@ Handles track management, active track selection, and track operations
 from typing import List, Optional, Dict, Any
 from PySide6.QtCore import QObject, Signal
 from src.midi_data_model import MidiProject, MidiTrack, MidiNote
+from src.audio_source_manager import get_audio_source_manager
 
 # Default color palette for tracks (16 colors with good contrast)
 DEFAULT_TRACK_COLORS = [
@@ -337,6 +338,15 @@ class TrackManager(QObject):
         if not track:
             return {}
         
+        # Get audio source information
+        audio_source_manager = get_audio_source_manager()
+        audio_source = None
+        audio_source_name = "Internal FluidSynth"
+        if audio_source_manager:
+            audio_source = audio_source_manager.get_track_source(track_index)
+            if audio_source:
+                audio_source_name = audio_source.name
+        
         return {
             'index': track_index,
             'name': track.name,
@@ -344,7 +354,9 @@ class TrackManager(QObject):
             'channel': track.channel,
             'program': track.program,
             'note_count': len(track.notes),
-            'is_active': track_index == self.active_track_index
+            'is_active': track_index == self.active_track_index,
+            'audio_source': audio_source,
+            'audio_source_name': audio_source_name
         }
     
     def get_all_tracks_info(self) -> List[Dict[str, Any]]:
