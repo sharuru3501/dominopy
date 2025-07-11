@@ -451,9 +451,9 @@ class PianoRollWidget(QWidget):
             self.vertical_offset = max(min_offset, self.vertical_offset)
             self.update()
         
-        # Enter/Return: Toggle playback
+        # Enter/Return: Rewind playhead to start (t=0)
         elif event.key() == Qt.Key_Return or event.key() == Qt.Key_Enter:
-            self._toggle_playback()
+            self._rewind_playhead()
         
         # Space key: Toggle playback
         elif event.key() == Qt.Key_Space:
@@ -468,6 +468,21 @@ class PianoRollWidget(QWidget):
             self._move_playhead_to_measure(1)
 
         super().keyPressEvent(event)
+    
+    def _rewind_playhead(self):
+        """Rewind playhead to the beginning (t=0)"""
+        print("PianoRoll: _rewind_playhead called")
+        
+        # Reset playhead position to 0
+        self.playhead_position = 0
+        
+        # Seek playback engine to position 0
+        if self.playback_engine:
+            self.playback_engine.seek_to_tick(0)
+            print("Seeked to tick 0")
+        
+        # Update display
+        self.update()
     
     def _toggle_playback(self):
         """Toggle playback state"""

@@ -101,6 +101,21 @@ class PyDominoMainWindow(QMainWindow):
         test_audio_action = audio_menu.addAction("Test Audio (C4)")
         test_audio_action.triggered.connect(self._test_audio)
         
+        # Playback Menu
+        playback_menu = menu_bar.addMenu("&Playback")
+        
+        rewind_action = playback_menu.addAction("&Rewind to Start")
+        rewind_action.setShortcut("Return")
+        rewind_action.setToolTip("Rewind playhead to the beginning (t=0)")
+        rewind_action.triggered.connect(self._rewind_playhead)
+        
+        playback_menu.addSeparator()
+        
+        play_pause_action = playback_menu.addAction("&Play/Pause")
+        play_pause_action.setShortcut("Space")
+        play_pause_action.setToolTip("Toggle playback")
+        play_pause_action.triggered.connect(self._toggle_playback)
+        
         # Edit Menu
         edit_menu = menu_bar.addMenu("&Edit")
         
@@ -400,6 +415,21 @@ class PyDominoMainWindow(QMainWindow):
         """Public method for external access (like piano roll widget)"""
         print("MainWindow: toggle_playback called")
         self._toggle_playback()
+    
+    def _rewind_playhead(self):
+        """Rewind playhead to the beginning (t=0)"""
+        print("MainWindow: _rewind_playhead called")
+        engine = get_playback_engine()
+        if engine:
+            engine.seek_to_tick(0)
+            print("MainWindow: Seeked to tick 0")
+            
+            # Update piano roll playhead position
+            if hasattr(self, 'piano_roll') and self.piano_roll:
+                self.piano_roll.playhead_position = 0
+                self.piano_roll.update()
+        else:
+            print("MainWindow: No playback engine found for rewind!")
     
     def update_chord_display(self, chord_info: str):
         """Update chord display in the top bar"""
