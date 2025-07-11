@@ -1,6 +1,6 @@
 
 from PySide6.QtWidgets import (QMainWindow, QFileDialog, QWidget, QHBoxLayout, QToolBar, 
-                              QScrollArea, QVBoxLayout, QScrollBar, QDockWidget)
+                              QScrollArea, QVBoxLayout, QScrollBar, QDockWidget, QMessageBox)
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtCore import Qt, QTimer
 from src.ui.piano_roll_widget import PianoRollWidget
@@ -12,6 +12,7 @@ from src.midi_parser import load_midi_file
 from src.edit_modes import EditMode
 from src.audio_system import initialize_audio_manager, cleanup_audio_manager, AudioSettings
 from src.playback_engine import initialize_playback_engine, cleanup_playback_engine, get_playback_engine, PlaybackState
+from src.midi_routing import initialize_midi_routing, cleanup_midi_routing, get_midi_routing_manager
 
 class PyDominoMainWindow(QMainWindow):
     def __init__(self):
@@ -76,6 +77,7 @@ class PyDominoMainWindow(QMainWindow):
         
         # Initialize systems (delayed to ensure QApplication is ready)
         QTimer.singleShot(50, self._initialize_audio_system)
+        QTimer.singleShot(100, self._initialize_midi_routing)
         QTimer.singleShot(150, self._initialize_playback_engine)
         QTimer.singleShot(200, self._connect_ui_signals)
 
@@ -100,6 +102,12 @@ class PyDominoMainWindow(QMainWindow):
         
         test_audio_action = audio_menu.addAction("Test Audio (C4)")
         test_audio_action.triggered.connect(self._test_audio)
+        
+        audio_menu.addSeparator()
+        
+        midi_routing_action = audio_menu.addAction("&MIDI Routing...")
+        midi_routing_action.setToolTip("Configure MIDI output routing and external connections")
+        midi_routing_action.triggered.connect(self._open_midi_routing)
         
         # Playback Menu
         playback_menu = menu_bar.addMenu("&Playback")
@@ -371,11 +379,29 @@ class PyDominoMainWindow(QMainWindow):
             print("Warning: Audio system initialization failed")
         print(f"_initialize_audio_system() received: {init_result}")
     
+    def _initialize_midi_routing(self):
+        """Initialize the MIDI routing system"""
+        init_result = initialize_midi_routing()
+        if init_result:
+            print("MIDI routing system initialized successfully")
+            
+            # Set default routing to internal FluidSynth
+            midi_router = get_midi_routing_manager()
+            if midi_router:
+                midi_router.set_primary_output("internal_fluidsynth")
+                print("Default MIDI routing set to internal FluidSynth")
+        else:
+            print("Warning: MIDI routing system initialization failed")
+    
     def closeEvent(self, event):
         """Handle window close event"""
         # Clean up playback engine
         cleanup_playback_engine()
         print("Playback engine cleaned up")
+        
+        # Clean up MIDI routing system
+        cleanup_midi_routing()
+        print("MIDI routing system cleaned up")
         
         # Clean up audio system
         cleanup_audio_manager()
@@ -398,6 +424,20 @@ class PyDominoMainWindow(QMainWindow):
                 print("Test audio: Failed to play note")
         else:
             print("Test audio: Audio manager not available")
+    
+    def _open_midi_routing(self):
+        """Open MIDI output settings dialog"""
+        try:
+            from src.ui.midi_output_dialog import MIDIOutputDialog
+            dialog = MIDIOutputDialog(self)
+            result = dialog.exec()
+            
+            if result == dialog.Accepted:
+                print("MIDI output settings updated")
+            
+        except Exception as e:
+            print(f"Error opening MIDI output dialog: {e}")
+            QMessageBox.warning(self, "Error", f"Failed to open MIDI settings:\\n{str(e)}")
     
     def _toggle_playback(self):
         """Toggle between play and pause"""

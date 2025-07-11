@@ -5,6 +5,11 @@ from src.ui.main_window import PyDominoMainWindow
 def main():
     """Main application entry point"""
     app = QApplication(sys.argv)
+    
+    # Initialize MIDI routing early
+    from src.midi_routing import initialize_midi_routing
+    initialize_midi_routing()
+    
     window = PyDominoMainWindow()
     window.show()
     sys.exit(app.exec())
