@@ -15,6 +15,7 @@ from src.playback_engine import initialize_playback_engine, cleanup_playback_eng
 from src.midi_routing import initialize_midi_routing, cleanup_midi_routing, get_midi_routing_manager
 from src.track_manager import initialize_track_manager, cleanup_track_manager, get_track_manager
 from src.audio_source_manager import initialize_audio_source_manager, cleanup_audio_source_manager
+from src.per_track_audio_router import initialize_per_track_audio_router, cleanup_per_track_audio_router
 from src.ui.track_list_widget import TrackListWidget
 
 class PyDominoMainWindow(QMainWindow):
@@ -83,6 +84,7 @@ class PyDominoMainWindow(QMainWindow):
         # Initialize systems (delayed to ensure QApplication is ready)
         QTimer.singleShot(50, self._initialize_audio_system)
         QTimer.singleShot(75, self._initialize_audio_source_manager)
+        QTimer.singleShot(90, self._initialize_per_track_router)
         QTimer.singleShot(100, self._initialize_midi_routing)
         QTimer.singleShot(125, self._initialize_track_manager)
         QTimer.singleShot(150, self._initialize_playback_engine)
@@ -420,6 +422,19 @@ class PyDominoMainWindow(QMainWindow):
         print(f"  Soundfonts: {len(audio_source_manager.get_soundfont_sources())}")
         print(f"  MIDI devices: {len(audio_source_manager.get_midi_sources())}")
     
+    def _initialize_per_track_router(self):
+        """Initialize the per-track audio router"""
+        router = initialize_per_track_audio_router()
+        
+        # Ensure manager references are updated
+        router._update_manager_references()
+        
+        # Initialize default track assignments
+        if router.audio_source_manager:
+            router.audio_source_manager.validate_track_assignments(8)
+        
+        print("Per-track audio router initialized")
+    
     def _initialize_midi_routing(self):
         """Initialize the MIDI routing system"""
         init_result = initialize_midi_routing()
@@ -474,6 +489,10 @@ class PyDominoMainWindow(QMainWindow):
         # Clean up track manager
         cleanup_track_manager()
         print("Track manager cleaned up")
+        
+        # Clean up per-track audio router
+        cleanup_per_track_audio_router()
+        print("Per-track audio router cleaned up")
         
         # Clean up audio source manager
         cleanup_audio_source_manager()

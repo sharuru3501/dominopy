@@ -10,6 +10,7 @@ from PySide6.QtCore import QObject, Signal, QTimer, QThread
 from src.midi_data_model import MidiNote, MidiProject
 from src.audio_system import get_audio_manager
 from src.midi_routing import get_midi_routing_manager
+from src.per_track_audio_router import get_per_track_audio_router
 
 class PlaybackState(Enum):
     """Playback state enumeration"""
@@ -24,6 +25,7 @@ class PlaybackEvent:
     tick: int        # MIDI tick position
     note: MidiNote   # The note to play
     event_type: str  # "note_on" or "note_off"
+    track_index: int = 0  # Track index for per-track routing
 
 class PlaybackEngine(QObject):
     """Core playback engine for MIDI sequences"""
@@ -102,23 +104,25 @@ class PlaybackEngine(QObject):
         if not self.project:
             return
         
-        # Collect all notes from all tracks
-        all_notes = []
-        for track in self.project.tracks:
-            all_notes.extend(track.notes)
+        # Collect all notes from all tracks with track information
+        all_notes_with_tracks = []
+        for track_index, track in enumerate(self.project.tracks):
+            for note in track.notes:
+                all_notes_with_tracks.append((note, track_index))
         
         # Sort notes by start time
-        all_notes.sort(key=lambda note: note.start_tick)
+        all_notes_with_tracks.sort(key=lambda item: item[0].start_tick)
         
         # Create note on/off events
-        for note in all_notes:
+        for note, track_index in all_notes_with_tracks:
             # Note on event
             note_on_time = note.start_tick / self.ticks_per_second
             self.events.append(PlaybackEvent(
                 timestamp=note_on_time,
                 tick=note.start_tick,
                 note=note,
-                event_type="note_on"
+                event_type="note_on",
+                track_index=track_index
             ))
             
             # Note off event
@@ -127,7 +131,8 @@ class PlaybackEngine(QObject):
                 timestamp=note_off_time,
                 tick=note.end_tick,
                 note=note,
-                event_type="note_off"
+                event_type="note_off",
+                track_index=track_index
             ))
         
         # Sort events by timestamp
@@ -276,50 +281,78 @@ class PlaybackEngine(QObject):
                 self.playback_finished.emit()
     
     def _schedule_event(self, event: PlaybackEvent):
-        """Schedule a MIDI event for playback"""
-        # Try MIDI routing first, fallback to audio manager
-        midi_router = get_midi_routing_manager()
+        """Execute a playback event using per-track routing"""
+        # Try per-track routing first, then fallback to legacy routing
+        per_track_router = get_per_track_audio_router()
         
         if event.event_type == "note_on":
-            if midi_router:
-                # Use MIDI routing system
+            success = False
+            
+            if per_track_router:
+                # Use per-track audio routing
                 try:
-                    midi_router.play_note(0, event.note.pitch, event.note.velocity)  # Channel 0
-                    self.active_notes.add(event.note.pitch)
-                    print(f"PlaybackEngine: Playing note {event.note.pitch} at tick {event.tick}, velocity {event.note.velocity}")
-                except Exception as e:
-                    print(f"PlaybackEngine: MIDI routing error for note {event.note.pitch}: {e}")
-            else:
-                # Fallback to direct audio manager
-                audio_manager = get_audio_manager()
-                if audio_manager:
-                    success = audio_manager.play_note_immediate(event.note.pitch, event.note.velocity)
+                    success = per_track_router.play_note(event.track_index, event.note)
                     if success:
                         self.active_notes.add(event.note.pitch)
-                        print(f"PlaybackEngine: Playing note {event.note.pitch} at tick {event.tick}, velocity {event.note.velocity} (fallback)")
+                        print(f"PlaybackEngine: Playing note {event.note.pitch} on track {event.track_index} at tick {event.tick}")
                     else:
-                        print(f"PlaybackEngine: Failed to play note {event.note.pitch} at tick {event.tick}")
+                        print(f"PlaybackEngine: Per-track routing failed for note {event.note.pitch} on track {event.track_index}")
+                except Exception as e:
+                    print(f"PlaybackEngine: Per-track routing error for note {event.note.pitch}: {e}")
+            
+            # Fallback to legacy routing if per-track routing failed
+            if not success:
+                midi_router = get_midi_routing_manager()
+                if midi_router:
+                    try:
+                        midi_router.play_note(event.note.channel, event.note.pitch, event.note.velocity)
+                        self.active_notes.add(event.note.pitch)
+                        print(f"PlaybackEngine: Playing note {event.note.pitch} (legacy routing)")
+                    except Exception as e:
+                        print(f"PlaybackEngine: Legacy MIDI routing error: {e}")
+                else:
+                    # Final fallback to direct audio manager
+                    audio_manager = get_audio_manager()
+                    if audio_manager:
+                        success = audio_manager.play_note_immediate(event.note.pitch, event.note.velocity)
+                        if success:
+                            self.active_notes.add(event.note.pitch)
+                            print(f"PlaybackEngine: Playing note {event.note.pitch} (direct audio)")
         
         elif event.event_type == "note_off":
             if event.note.pitch in self.active_notes:
-                if midi_router:
-                    # Use MIDI routing system
+                success = False
+                
+                if per_track_router:
+                    # Use per-track audio routing
                     try:
-                        midi_router.stop_note(0, event.note.pitch)  # Channel 0
-                        self.active_notes.discard(event.note.pitch)
-                        print(f"PlaybackEngine: Stopping note {event.note.pitch} at tick {event.tick}")
-                    except Exception as e:
-                        print(f"PlaybackEngine: MIDI routing error stopping note {event.note.pitch}: {e}")
-                else:
-                    # Fallback to direct audio manager
-                    audio_manager = get_audio_manager()
-                    if audio_manager:
-                        success = audio_manager.stop_note_immediate(event.note.pitch)
+                        success = per_track_router.stop_note(event.track_index, event.note)
                         if success:
                             self.active_notes.discard(event.note.pitch)
-                            print(f"PlaybackEngine: Stopping note {event.note.pitch} at tick {event.tick} (fallback)")
+                            print(f"PlaybackEngine: Stopping note {event.note.pitch} on track {event.track_index}")
                         else:
-                            print(f"PlaybackEngine: Failed to stop note {event.note.pitch} at tick {event.tick}")
+                            print(f"PlaybackEngine: Per-track stop failed for note {event.note.pitch}")
+                    except Exception as e:
+                        print(f"PlaybackEngine: Per-track routing error stopping note {event.note.pitch}: {e}")
+                
+                # Fallback to legacy routing if per-track routing failed
+                if not success:
+                    midi_router = get_midi_routing_manager()
+                    if midi_router:
+                        try:
+                            midi_router.stop_note(event.note.channel, event.note.pitch)
+                            self.active_notes.discard(event.note.pitch)
+                            print(f"PlaybackEngine: Stopping note {event.note.pitch} (legacy routing)")
+                        except Exception as e:
+                            print(f"PlaybackEngine: Legacy MIDI stop error: {e}")
+                    else:
+                        # Final fallback to direct audio manager
+                        audio_manager = get_audio_manager()
+                        if audio_manager:
+                            success = audio_manager.stop_note_immediate(event.note.pitch)
+                            if success:
+                                self.active_notes.discard(event.note.pitch)
+                                print(f"PlaybackEngine: Stopping note {event.note.pitch} (direct audio)")
     
     def _stop_all_notes(self):
         """Stop all currently playing notes"""
