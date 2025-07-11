@@ -17,6 +17,7 @@ from src.track_manager import initialize_track_manager, cleanup_track_manager, g
 from src.audio_source_manager import initialize_audio_source_manager, cleanup_audio_source_manager
 from src.per_track_audio_router import initialize_per_track_audio_router, cleanup_per_track_audio_router
 from src.ui.track_list_widget import TrackListWidget
+from src.ui.virtual_keyboard_widget import VirtualKeyboardWidget
 
 class PyDominoMainWindow(QMainWindow):
     def __init__(self):
@@ -88,6 +89,7 @@ class PyDominoMainWindow(QMainWindow):
         QTimer.singleShot(100, self._initialize_midi_routing)
         QTimer.singleShot(125, self._initialize_track_manager)
         QTimer.singleShot(150, self._initialize_playback_engine)
+        QTimer.singleShot(175, self._initialize_virtual_keyboard)
         QTimer.singleShot(200, self._connect_ui_signals)
 
     def _create_menu_bar(self):
@@ -117,6 +119,13 @@ class PyDominoMainWindow(QMainWindow):
         midi_routing_action = audio_menu.addAction("&MIDI Routing...")
         midi_routing_action.setToolTip("Configure MIDI output routing and external connections")
         midi_routing_action.triggered.connect(self._open_midi_routing)
+        
+        audio_menu.addSeparator()
+        
+        virtual_keyboard_action = audio_menu.addAction("&Virtual Keyboard")
+        virtual_keyboard_action.setShortcut("Ctrl+K")  # Use Ctrl+K (Cmd+K on Mac)
+        virtual_keyboard_action.setToolTip("Open virtual keyboard for playing notes (Ctrl+K)")
+        virtual_keyboard_action.triggered.connect(self._toggle_virtual_keyboard)
         
         # Playback Menu
         playback_menu = menu_bar.addMenu("&Playback")
@@ -435,6 +444,19 @@ class PyDominoMainWindow(QMainWindow):
         
         print("Per-track audio router initialized")
     
+    def _initialize_virtual_keyboard(self):
+        """Initialize the virtual keyboard"""
+        self.virtual_keyboard = VirtualKeyboardWidget(self)
+        
+        # Connect virtual keyboard signals to audio system
+        self.virtual_keyboard.note_pressed.connect(self._on_virtual_key_pressed)
+        self.virtual_keyboard.note_released.connect(self._on_virtual_key_released)
+        
+        # Update virtual keyboard with current track info
+        self._update_virtual_keyboard_track_info()
+        
+        print("Virtual keyboard initialized")
+    
     def _initialize_midi_routing(self):
         """Initialize the MIDI routing system"""
         init_result = initialize_midi_routing()
@@ -475,6 +497,9 @@ class PyDominoMainWindow(QMainWindow):
         print(f"Track {track_index} selected")
         # Piano roll will be updated to show only this track's notes
         self.piano_roll.update()  # Refresh display
+        
+        # Update virtual keyboard track info
+        self._update_virtual_keyboard_track_info()
     
     def closeEvent(self, event):
         """Handle window close event"""
@@ -497,6 +522,11 @@ class PyDominoMainWindow(QMainWindow):
         # Clean up audio source manager
         cleanup_audio_source_manager()
         print("Audio source manager cleaned up")
+        
+        # Clean up virtual keyboard
+        if hasattr(self, 'virtual_keyboard') and self.virtual_keyboard:
+            self.virtual_keyboard.close()
+            print("Virtual keyboard cleaned up")
         
         # Clean up audio system
         cleanup_audio_manager()
@@ -533,6 +563,109 @@ class PyDominoMainWindow(QMainWindow):
         except Exception as e:
             print(f"Error opening MIDI output dialog: {e}")
             QMessageBox.warning(self, "Error", f"Failed to open MIDI settings:\\n{str(e)}")
+    
+    def _toggle_virtual_keyboard(self):
+        """Toggle virtual keyboard visibility"""
+        if hasattr(self, 'virtual_keyboard') and self.virtual_keyboard:
+            if self.virtual_keyboard.isVisible():
+                self.virtual_keyboard.hide()
+            else:
+                self.virtual_keyboard.show()
+                self.virtual_keyboard.raise_()
+                self.virtual_keyboard.activateWindow()
+                # Update track info when showing
+                self._update_virtual_keyboard_track_info()
+        else:
+            print("Virtual keyboard not initialized")
+    
+    def _on_virtual_key_pressed(self, pitch: int, velocity: int):
+        """Handle virtual keyboard key press"""
+        from src.track_manager import get_track_manager
+        from src.per_track_audio_router import get_per_track_audio_router
+        from src.midi_data_model import MidiNote
+        
+        # Get current active track
+        track_manager = get_track_manager()
+        if track_manager:
+            active_track_index = track_manager.get_active_track_index()
+            
+            # Try per-track audio routing
+            per_track_router = get_per_track_audio_router()
+            if per_track_router:
+                # Create a note for the virtual keyboard
+                virtual_note = MidiNote(
+                    pitch=pitch,
+                    start_tick=0,
+                    end_tick=100,  # Short duration
+                    velocity=velocity,
+                    channel=active_track_index % 16
+                )
+                
+                success = per_track_router.play_note(active_track_index, virtual_note)
+                if success:
+                    print(f"Virtual keyboard: Playing pitch {pitch} on track {active_track_index}")
+                    return
+        
+        # Fallback to default audio manager
+        from src.audio_system import get_audio_manager
+        audio_manager = get_audio_manager()
+        if audio_manager:
+            audio_manager.play_note_preview(pitch, velocity)
+            print(f"Virtual keyboard: Playing pitch {pitch} (fallback)")
+    
+    def _on_virtual_key_released(self, pitch: int):
+        """Handle virtual keyboard key release"""
+        from src.track_manager import get_track_manager
+        from src.per_track_audio_router import get_per_track_audio_router
+        from src.midi_data_model import MidiNote
+        
+        # Get current active track
+        track_manager = get_track_manager()
+        if track_manager:
+            active_track_index = track_manager.get_active_track_index()
+            
+            # Try per-track audio routing
+            per_track_router = get_per_track_audio_router()
+            if per_track_router:
+                # Create a note for the virtual keyboard
+                virtual_note = MidiNote(
+                    pitch=pitch,
+                    start_tick=0,
+                    end_tick=100,
+                    velocity=100,
+                    channel=active_track_index % 16
+                )
+                
+                success = per_track_router.stop_note(active_track_index, virtual_note)
+                if success:
+                    print(f"Virtual keyboard: Stopped pitch {pitch} on track {active_track_index}")
+                    return
+        
+        # Fallback to default audio manager
+        from src.audio_system import get_audio_manager
+        audio_manager = get_audio_manager()
+        if audio_manager:
+            audio_manager.stop_note_immediate(pitch)
+            print(f"Virtual keyboard: Stopped pitch {pitch} (fallback)")
+    
+    def _update_virtual_keyboard_track_info(self):
+        """Update virtual keyboard with current track information"""
+        if not hasattr(self, 'virtual_keyboard') or not self.virtual_keyboard:
+            return
+            
+        from src.track_manager import get_track_manager
+        from src.audio_source_manager import get_audio_source_manager
+        
+        track_manager = get_track_manager()
+        audio_source_manager = get_audio_source_manager()
+        
+        if track_manager and audio_source_manager:
+            active_track_index = track_manager.get_active_track_index()
+            track_name = track_manager.get_track_name(active_track_index)
+            audio_source = audio_source_manager.get_track_source(active_track_index)
+            source_name = audio_source.name if audio_source else "Unknown"
+            
+            self.virtual_keyboard.update_track_info(track_name, source_name)
     
     def _toggle_playback(self):
         """Toggle between play and pause"""
