@@ -96,6 +96,7 @@ class TrackItemWidget(QFrame):
         track_info = self.track_manager.get_track_info(self.track_index) if self.track_manager else {}
         note_count = track_info.get('note_count', 0)
         program = track_info.get('program', 1)
+        audio_source_name = track_info.get('audio_source_name', 'Internal FluidSynth')
         
         # Create info layout
         info_layout = QVBoxLayout()
@@ -113,6 +114,13 @@ class TrackItemWidget(QFrame):
         self.program_label.setFont(QFont("Arial", 7))
         self.program_label.setStyleSheet("color: #888888;")
         info_layout.addWidget(self.program_label)
+        
+        # Audio source
+        self.audio_source_label = QLabel(f"{audio_source_name[:12]}...")
+        self.audio_source_label.setFont(QFont("Arial", 7))
+        self.audio_source_label.setStyleSheet("color: #4A90E2;")  # Blue color for audio source
+        self.audio_source_label.setToolTip(f"Audio Source: {audio_source_name}")
+        info_layout.addWidget(self.audio_source_label)
         
         layout.addLayout(info_layout)
     
@@ -145,11 +153,15 @@ class TrackItemWidget(QFrame):
             self.is_active = active
             self.update_style()
     
-    def update_info(self, note_count: int, program: int = None):
+    def update_info(self, note_count: int, program: int = None, audio_source_name: str = None):
         """Update track information display"""
         self.info_label.setText(f"{note_count} notes")
         if program is not None and hasattr(self, 'program_label'):
             self.program_label.setText(f"Prg {program}")
+        if audio_source_name is not None and hasattr(self, 'audio_source_label'):
+            display_name = f"{audio_source_name[:12]}..." if len(audio_source_name) > 12 else audio_source_name
+            self.audio_source_label.setText(display_name)
+            self.audio_source_label.setToolTip(f"Audio Source: {audio_source_name}")
     
     def update_color(self, color: str):
         """Update the track color"""
@@ -210,6 +222,9 @@ class TrackItemWidget(QFrame):
         color_action = menu.addAction("Change Color")
         color_action.triggered.connect(self._open_color_picker)
         
+        audio_source_action = menu.addAction("Audio Source...")
+        audio_source_action.triggered.connect(self._open_audio_source_selector)
+        
         menu.addSeparator()
         
         duplicate_action = menu.addAction("Duplicate Track")
@@ -238,6 +253,30 @@ class TrackItemWidget(QFrame):
         
         if reply == QMessageBox.Yes:
             self.track_removed.emit(self.track_index)
+    
+    def _open_audio_source_selector(self):
+        """Open audio source selection dialog"""
+        from src.ui.audio_source_dialog import AudioSourceDialog
+        
+        dialog = AudioSourceDialog(self.track_index, self)
+        dialog.source_selected.connect(self._on_audio_source_selected)
+        dialog.exec()
+    
+    def _on_audio_source_selected(self, source_id: str):
+        """Handle audio source selection"""
+        from src.audio_source_manager import get_audio_source_manager
+        
+        audio_source_manager = get_audio_source_manager()
+        if audio_source_manager:
+            success = audio_source_manager.assign_source_to_track(self.track_index, source_id)
+            if success:
+                # Update display
+                source = audio_source_manager.get_track_source(self.track_index)
+                if source and hasattr(self, 'audio_source_label'):
+                    display_name = f"{source.name[:12]}..." if len(source.name) > 12 else source.name
+                    self.audio_source_label.setText(display_name)
+                    self.audio_source_label.setToolTip(f"Audio Source: {source.name}")
+                    print(f"Track {self.track_index} audio source changed to: {source.name}")
 
 class TrackListWidget(QWidget):
     """Main track list widget with scrolling support"""
@@ -344,7 +383,11 @@ class TrackListWidget(QWidget):
         item.track_duplicated.connect(self._on_track_item_duplicated)
         
         # Update info
-        item.update_info(track_info['note_count'])
+        item.update_info(
+            track_info['note_count'], 
+            track_info.get('program'), 
+            track_info.get('audio_source_name')
+        )
         
         # Add to layout (before the stretch)
         position = len(self.track_items)
@@ -417,4 +460,8 @@ class TrackListWidget(QWidget):
         
         for i, item in enumerate(self.track_items):
             track_info = self.track_manager.get_track_info(i)
-            item.update_info(track_info['note_count'])
+            item.update_info(
+                track_info['note_count'],
+                track_info.get('program'),
+                track_info.get('audio_source_name')
+            )
