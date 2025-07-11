@@ -1499,38 +1499,13 @@ class PianoRollWidget(QWidget):
     
     def _play_track_preview(self, pitch: int, velocity: int = 100):
         """Play a preview note using the current track's audio source"""
-        from src.track_manager import get_track_manager
-        from src.per_track_audio_router import get_per_track_audio_router
+        # For now, just use the default audio manager to get sound working again
         from src.audio_system import get_audio_manager
-        from src.midi_data_model import MidiNote
         
-        # Get current active track
-        track_manager = get_track_manager()
-        if track_manager:
-            active_track_index = track_manager.get_active_track_index()
-            
-            # Try per-track audio routing first
-            per_track_router = get_per_track_audio_router()
-            if per_track_router:
-                # Create a temporary note for preview
-                preview_note = MidiNote(
-                    pitch=pitch,
-                    start_tick=0,
-                    end_tick=100,  # Short duration for preview
-                    velocity=velocity,
-                    channel=active_track_index % 16
-                )
-                
-                success = per_track_router.play_note(active_track_index, preview_note)
-                if success:
-                    print(f"Preview: Playing pitch {pitch} on track {active_track_index}")
-                    return
-            
-        # Fallback to default audio manager
         audio_manager = get_audio_manager()
         if audio_manager:
-            audio_manager.play_note_preview(pitch, velocity)
-            print(f"Preview: Playing pitch {pitch} (fallback)")
+            return audio_manager.play_note_preview(pitch, velocity)
+        return False
     
     def set_playhead_position(self, position: int):
         """Set playhead position from external source (like playback engine)"""
