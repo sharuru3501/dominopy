@@ -199,3 +199,55 @@ class CommandHistory:
         """Clear command history"""
         self.commands.clear()
         self.current_index = -1
+
+class MoveMultipleNotesCommand(Command):
+    """Command to move multiple notes"""
+    
+    def __init__(self, notes_with_deltas: List[tuple]):
+        """
+        Initialize with list of (note, old_start_tick, old_pitch, new_start_tick, new_pitch) tuples
+        """
+        self.notes_with_deltas = notes_with_deltas
+    
+    def execute(self):
+        """Execute the move command"""
+        for note, old_start_tick, old_pitch, new_start_tick, new_pitch in self.notes_with_deltas:
+            # Calculate duration to preserve note length
+            duration = note.end_tick - note.start_tick
+            
+            # Apply new position
+            note.start_tick = new_start_tick
+            note.end_tick = new_start_tick + duration
+            note.pitch = new_pitch
+    
+    def undo(self):
+        """Undo the move command"""
+        for note, old_start_tick, old_pitch, new_start_tick, new_pitch in self.notes_with_deltas:
+            # Calculate duration to preserve note length
+            duration = note.end_tick - note.start_tick
+            
+            # Restore original position
+            note.start_tick = old_start_tick
+            note.end_tick = old_start_tick + duration
+            note.pitch = old_pitch
+
+class ResizeMultipleNotesCommand(Command):
+    """Command to resize multiple notes"""
+    
+    def __init__(self, notes_with_resize_data: List[tuple]):
+        """
+        Initialize with list of (note, old_start_tick, old_end_tick, new_start_tick, new_end_tick) tuples
+        """
+        self.notes_with_resize_data = notes_with_resize_data
+    
+    def execute(self):
+        """Execute the resize command"""
+        for note, old_start_tick, old_end_tick, new_start_tick, new_end_tick in self.notes_with_resize_data:
+            note.start_tick = new_start_tick
+            note.end_tick = new_end_tick
+    
+    def undo(self):
+        """Undo the resize command"""
+        for note, old_start_tick, old_end_tick, new_start_tick, new_end_tick in self.notes_with_resize_data:
+            note.start_tick = old_start_tick
+            note.end_tick = old_end_tick

@@ -2,13 +2,14 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
 from PySide6.QtCore import Qt, QRectF, QPointF, Signal, QTimer
 from PySide6.QtGui import QPainter, QColor, QFont, QPen, QBrush, QPolygonF
-from typing import List
+from typing import List, Dict
 
 from src.midi_data_model import MidiProject, MidiNote
 from src.playback_engine import PlaybackState
 from src.command_system import (
     CommandHistory, AddNoteCommand, DeleteNoteCommand, MoveNoteCommand,
-    ResizeNoteCommand, DeleteMultipleNotesCommand, PasteNotesCommand, CutNotesCommand
+    ResizeNoteCommand, DeleteMultipleNotesCommand, PasteNotesCommand, CutNotesCommand,
+    MoveMultipleNotesCommand, ResizeMultipleNotesCommand
 )
 from src.clipboard_system import global_clipboard
 from src.edit_modes import EditMode, EditModeManager
@@ -54,6 +55,12 @@ class PianoRollWidget(QWidget):
         self.resize_start_tick: int = 0
         self.resizing_left_edge: bool = False # New flag for left edge resizing
         self.drag_original_duration: int = 0 # Store original duration for dragging
+        
+        # Multi-note operation state
+        self.dragging_multiple_notes: bool = False
+        self.resizing_multiple_notes: bool = False
+        self.multi_drag_start_positions: Dict[MidiNote, tuple] = {}  # note -> (start_tick, pitch)
+        self.multi_resize_start_data: Dict[MidiNote, tuple] = {}     # note -> (start_tick, end_tick)
 
         # Quantization unit (e.g., 16th note by default)
         self.quantize_grid_ticks = 480 // 4 # Default to 16th note (480 ticks/beat / 4 = 120 ticks)
@@ -784,7 +791,7 @@ class PianoRollWidget(QWidget):
         clicked_pitch = self._y_to_pitch(clicked_y)
         
         # Check if clicking on an existing note
-        clicked_on_note = False
+        clicked_note = None
         if self.midi_project:
             for track in self.midi_project.tracks:
                 for note in track.notes:
@@ -797,17 +804,72 @@ class PianoRollWidget(QWidget):
                     # Check if click is within note bounds
                     if note_x <= clicked_x < (note_x + note_width) and \
                        note_y <= clicked_y < (note_y + note_height):
-                        # Toggle note selection
-                        if note in self.selected_notes:
-                            self.selected_notes.remove(note)
-                        else:
-                            self.selected_notes.append(note)
-                        clicked_on_note = True
+                        clicked_note = note
                         break
-                if clicked_on_note:
+                if clicked_note:
                     break
         
-        if not clicked_on_note:
+        if clicked_note:
+            # Clicked on a note - check for resize/drag operations
+            grid_start_x = self.piano_width if self.show_piano_keyboard else 0
+            note_x = self._tick_to_x(clicked_note.start_tick) + grid_start_x
+            note_width = clicked_note.duration * self.pixels_per_tick
+            resize_threshold = 8  # pixels
+            
+            # Check if we're clicking on the edge for resizing
+            is_right_edge = clicked_x >= (note_x + note_width - resize_threshold)
+            is_left_edge = clicked_x <= (note_x + resize_threshold)
+            
+            if clicked_note in self.selected_notes:
+                # Clicked on already selected note - start operation
+                if is_right_edge or is_left_edge:
+                    # Start resize operation (single or multi-note)
+                    self.resizing_multiple_notes = True
+                    self.resizing_left_edge = is_left_edge
+                    
+                    # Store original data for all selected notes
+                    self.multi_resize_start_data = {}
+                    for note in self.selected_notes:
+                        self.multi_resize_start_data[note] = (note.start_tick, note.end_tick)
+                else:
+                    # Start drag operation (single or multi-note)
+                    self.dragging_multiple_notes = True
+                    self.drag_start_pos = QPointF(clicked_x, clicked_y)
+                    
+                    # Store original positions for all selected notes
+                    self.multi_drag_start_positions = {}
+                    for note in self.selected_notes:
+                        self.multi_drag_start_positions[note] = (note.start_tick, note.pitch)
+            else:
+                # New note clicked - update selection
+                if not (event.modifiers() & Qt.ControlModifier):
+                    # Clear previous selection if not holding Ctrl
+                    self.selected_notes.clear()
+                
+                # Add clicked note to selection
+                self.selected_notes.append(clicked_note)
+                
+                # Also start operation immediately if we're on an edge
+                if is_right_edge or is_left_edge:
+                    # Start resize operation
+                    self.resizing_multiple_notes = True
+                    self.resizing_left_edge = is_left_edge
+                    
+                    # Store original data
+                    self.multi_resize_start_data = {}
+                    for note in self.selected_notes:
+                        self.multi_resize_start_data[note] = (note.start_tick, note.end_tick)
+                else:
+                    # Start drag operation
+                    self.dragging_multiple_notes = True
+                    self.drag_start_pos = QPointF(clicked_x, clicked_y)
+                    
+                    # Store original positions
+                    self.multi_drag_start_positions = {}
+                    for note in self.selected_notes:
+                        self.multi_drag_start_positions[note] = (note.start_tick, note.pitch)
+        else:
+            # No note clicked - start rectangle selection or handle grid
             # Check if clicking on a grid cell
             grid_cell = self.grid_manager.get_grid_cell_at_position(clicked_tick, clicked_pitch)
             
@@ -924,11 +986,131 @@ class PianoRollWidget(QWidget):
     def _handle_selection_mode_move(self, event):
         """Handle mouse move in selection mode"""
         if event.buttons() == Qt.LeftButton:
-            selection_rect = self.edit_mode_manager.get_selection_rectangle()
-            if selection_rect:
-                from PySide6.QtCore import QPointF
-                self.edit_mode_manager.update_selection_rectangle(QPointF(event.position().x(), event.position().y()))
-                self.update()
+            if self.dragging_multiple_notes:
+                # Handle multi-note drag
+                self._handle_multi_note_drag(event)
+            elif self.resizing_multiple_notes:
+                # Handle multi-note resize
+                self._handle_multi_note_resize(event)
+            else:
+                # Handle rectangle selection
+                selection_rect = self.edit_mode_manager.get_selection_rectangle()
+                if selection_rect:
+                    from PySide6.QtCore import QPointF
+                    self.edit_mode_manager.update_selection_rectangle(QPointF(event.position().x(), event.position().y()))
+                    self.update()
+    
+    def _handle_multi_note_drag(self, event):
+        """Handle dragging multiple selected notes"""
+        if not self.drag_start_pos or not self.multi_drag_start_positions:
+            return
+        
+        # Calculate movement delta
+        current_x = event.position().x()
+        current_y = event.position().y()
+        
+        delta_x = current_x - self.drag_start_pos.x()
+        delta_y = current_y - self.drag_start_pos.y()
+        
+        # Convert pixel deltas to tick/pitch deltas
+        delta_ticks = delta_x / self.pixels_per_tick
+        delta_pitch = -delta_y / self.pixels_per_pitch  # Negative because Y increases downward
+        
+        # Apply movement to all selected notes
+        for note in self.selected_notes:
+            if note in self.multi_drag_start_positions:
+                original_start_tick, original_pitch = self.multi_drag_start_positions[note]
+                
+                # Calculate new position
+                new_start_tick = original_start_tick + delta_ticks
+                new_pitch = original_pitch + delta_pitch
+                
+                # Quantize new position
+                new_start_tick = round(new_start_tick / self.quantize_grid_ticks) * self.quantize_grid_ticks
+                new_pitch = max(0, min(127, int(round(new_pitch))))  # Clamp to MIDI range
+                
+                # Calculate duration to preserve note length
+                duration = note.end_tick - note.start_tick
+                
+                # Apply new position
+                note.start_tick = max(0, int(new_start_tick))  # Ensure non-negative
+                note.end_tick = note.start_tick + duration
+                note.pitch = new_pitch
+        
+        self.update()
+    
+    def _handle_multi_note_resize(self, event):
+        """Handle resizing multiple selected notes with relative scaling"""
+        if not self.multi_resize_start_data:
+            return
+        
+        current_x = event.position().x()
+        current_tick = self._x_to_tick(current_x)
+        
+        # Quantize the target tick
+        quantized_tick = round(current_tick / self.quantize_grid_ticks) * self.quantize_grid_ticks
+        
+        # Find a reference note (first note) to calculate the scaling factor
+        reference_note = None
+        reference_original_data = None
+        
+        for note in self.selected_notes:
+            if note in self.multi_resize_start_data:
+                reference_note = note
+                reference_original_data = self.multi_resize_start_data[note]
+                break
+        
+        if not reference_note or not reference_original_data:
+            return
+        
+        ref_original_start, ref_original_end = reference_original_data
+        ref_original_duration = ref_original_end - ref_original_start
+        
+        # Calculate scaling factor based on reference note
+        if self.resizing_left_edge:
+            # Left edge resize - calculate new start position and scaling
+            new_ref_start = max(0, quantized_tick)
+            min_duration = self.quantize_grid_ticks
+            
+            # Ensure minimum duration for reference note
+            if new_ref_start >= ref_original_end - min_duration:
+                new_ref_start = ref_original_end - min_duration
+            
+            # Calculate scale factor based on duration change
+            new_ref_duration = ref_original_end - new_ref_start
+            scale_factor = new_ref_duration / ref_original_duration if ref_original_duration > 0 else 1.0
+            
+        else:
+            # Right edge resize - calculate new end position and scaling
+            new_ref_end = max(ref_original_start + self.quantize_grid_ticks, quantized_tick)
+            
+            # Calculate scale factor based on duration change
+            new_ref_duration = new_ref_end - ref_original_start
+            scale_factor = new_ref_duration / ref_original_duration if ref_original_duration > 0 else 1.0
+        
+        # Apply scaling to all selected notes
+        for note in self.selected_notes:
+            if note in self.multi_resize_start_data:
+                original_start_tick, original_end_tick = self.multi_resize_start_data[note]
+                original_duration = original_end_tick - original_start_tick
+                
+                if self.resizing_left_edge:
+                    # Scale duration and adjust start position
+                    new_duration = max(self.quantize_grid_ticks, int(original_duration * scale_factor))
+                    note.start_tick = original_end_tick - new_duration
+                    note.end_tick = original_end_tick
+                    
+                    # Ensure start tick is not negative
+                    if note.start_tick < 0:
+                        note.start_tick = 0
+                        note.end_tick = new_duration
+                else:
+                    # Scale duration and adjust end position
+                    new_duration = max(self.quantize_grid_ticks, int(original_duration * scale_factor))
+                    note.start_tick = original_start_tick
+                    note.end_tick = original_start_tick + new_duration
+        
+        self.update()
     
     def _handle_note_input_mode_release(self, event):
         """Handle mouse release in note input mode"""
@@ -976,16 +1158,86 @@ class PianoRollWidget(QWidget):
     
     def _handle_selection_mode_release(self, event):
         """Handle mouse release in selection mode"""
-        selection_rect = self.edit_mode_manager.get_selection_rectangle()
-        if selection_rect:
-            # Get the final selection rectangle
-            final_rect = self.edit_mode_manager.finish_selection_rectangle()
-            if final_rect and final_rect.width() > 5 and final_rect.height() > 5:  # Minimum size
-                # Select notes within the rectangle
-                self._select_notes_in_rectangle(final_rect, event.modifiers() & Qt.ControlModifier)
+        # Handle multi-note operations first
+        if self.dragging_multiple_notes:
+            self._finish_multi_note_drag()
+        elif self.resizing_multiple_notes:
+            self._finish_multi_note_resize()
+        else:
+            # Handle rectangle selection
+            selection_rect = self.edit_mode_manager.get_selection_rectangle()
+            if selection_rect:
+                # Get the final selection rectangle
+                final_rect = self.edit_mode_manager.finish_selection_rectangle()
+                if final_rect and final_rect.width() > 5 and final_rect.height() > 5:  # Minimum size
+                    # Select notes within the rectangle
+                    self._select_notes_in_rectangle(final_rect, event.modifiers() & Qt.ControlModifier)
+            
+            self.edit_mode_manager.clear_selection_rectangle()
         
-        self.edit_mode_manager.clear_selection_rectangle()
         self.update()
+    
+    def _finish_multi_note_drag(self):
+        """Finish multi-note drag operation and create command"""
+        if not self.multi_drag_start_positions:
+            self.dragging_multiple_notes = False
+            return
+        
+        # Create list of note movements for command
+        notes_with_deltas = []
+        for note in self.selected_notes:
+            if note in self.multi_drag_start_positions:
+                old_start_tick, old_pitch = self.multi_drag_start_positions[note]
+                new_start_tick = note.start_tick
+                new_pitch = note.pitch
+                
+                # Only add to command if position actually changed
+                if old_start_tick != new_start_tick or old_pitch != new_pitch:
+                    notes_with_deltas.append((note, old_start_tick, old_pitch, new_start_tick, new_pitch))
+        
+        # Create and execute command if there were changes
+        if notes_with_deltas:
+            command = MoveMultipleNotesCommand(notes_with_deltas)
+            self.command_history.execute_command(command)
+            
+            # Update playback engine
+            self._update_playback_engine()
+        
+        # Clean up state
+        self.dragging_multiple_notes = False
+        self.multi_drag_start_positions.clear()
+        self.drag_start_pos = None
+    
+    def _finish_multi_note_resize(self):
+        """Finish multi-note resize operation and create command"""
+        if not self.multi_resize_start_data:
+            self.resizing_multiple_notes = False
+            return
+        
+        # Create list of note resizes for command
+        notes_with_resize_data = []
+        for note in self.selected_notes:
+            if note in self.multi_resize_start_data:
+                old_start_tick, old_end_tick = self.multi_resize_start_data[note]
+                new_start_tick = note.start_tick
+                new_end_tick = note.end_tick
+                
+                # Only add to command if size actually changed
+                if old_start_tick != new_start_tick or old_end_tick != new_end_tick:
+                    notes_with_resize_data.append((note, old_start_tick, old_end_tick, new_start_tick, new_end_tick))
+        
+        # Create and execute command if there were changes
+        if notes_with_resize_data:
+            command = ResizeMultipleNotesCommand(notes_with_resize_data)
+            self.command_history.execute_command(command)
+            
+            # Update playback engine
+            self._update_playback_engine()
+        
+        # Clean up state
+        self.resizing_multiple_notes = False
+        self.multi_resize_start_data.clear()
+        self.resizing_left_edge = False
     
     def _select_notes_in_rectangle(self, rect, add_to_selection=False):
         """Select notes within the given rectangle"""
