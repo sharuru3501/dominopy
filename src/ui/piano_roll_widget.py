@@ -274,9 +274,8 @@ class PianoRollWidget(QWidget):
                 note_name = get_note_name_with_octave(clicked_pitch)
                 print(f"Piano key clicked: {note_name} (MIDI {clicked_pitch})")
                 
-                audio_manager = get_audio_manager()
-                if audio_manager:
-                    audio_manager.play_note_preview(clicked_pitch, 100)
+                # Use per-track audio routing for preview
+                self._play_track_preview(clicked_pitch, 100)
                 return
             
             # Check if clicking on playhead (always check regardless of mode)
@@ -842,10 +841,8 @@ class PianoRollWidget(QWidget):
                 # Update playback engine with new note
                 self._update_playback_engine()
                 
-                # Play audio feedback for the new note
-                audio_manager = get_audio_manager()
-                if audio_manager:
-                    audio_manager.play_note_preview(new_note.pitch, new_note.velocity)
+                # Play audio feedback for the new note using track-specific audio
+                self._play_track_preview(new_note.pitch, new_note.velocity)
                 # Select the newly created note
                 self.selected_notes = [new_note]
                 self.update() # Repaint to show the new note
@@ -1424,9 +1421,9 @@ class PianoRollWidget(QWidget):
         # Get pitches from selected notes
         pitches = [note.pitch for note in self.selected_notes]
         
-        # Play all notes simultaneously
+        # Play all notes simultaneously using track-specific audio
         for pitch in pitches:
-            audio_manager.play_note_preview(pitch, 100)
+            self._play_track_preview(pitch, 100)
         
         # Analyze and display chord information
         from src.music_theory import detect_chord, get_note_name_with_octave
@@ -1467,7 +1464,7 @@ class PianoRollWidget(QWidget):
         if audio_manager:
             pitches = [note.pitch for note in notes_at_playhead]
             for pitch in pitches:
-                audio_manager.play_note_preview(pitch, 100)
+                self._play_track_preview(pitch, 100)
             
             # Analyze and display chord information
             from src.music_theory import detect_chord, get_note_name_with_octave
@@ -1499,6 +1496,41 @@ class PianoRollWidget(QWidget):
         else:
             # Fallback: just print for now
             print(f"Chord Info: {info}")
+    
+    def _play_track_preview(self, pitch: int, velocity: int = 100):
+        """Play a preview note using the current track's audio source"""
+        from src.track_manager import get_track_manager
+        from src.per_track_audio_router import get_per_track_audio_router
+        from src.audio_system import get_audio_manager
+        from src.midi_data_model import MidiNote
+        
+        # Get current active track
+        track_manager = get_track_manager()
+        if track_manager:
+            active_track_index = track_manager.get_active_track_index()
+            
+            # Try per-track audio routing first
+            per_track_router = get_per_track_audio_router()
+            if per_track_router:
+                # Create a temporary note for preview
+                preview_note = MidiNote(
+                    pitch=pitch,
+                    start_tick=0,
+                    end_tick=100,  # Short duration for preview
+                    velocity=velocity,
+                    channel=active_track_index % 16
+                )
+                
+                success = per_track_router.play_note(active_track_index, preview_note)
+                if success:
+                    print(f"Preview: Playing pitch {pitch} on track {active_track_index}")
+                    return
+            
+        # Fallback to default audio manager
+        audio_manager = get_audio_manager()
+        if audio_manager:
+            audio_manager.play_note_preview(pitch, velocity)
+            print(f"Preview: Playing pitch {pitch} (fallback)")
     
     def set_playhead_position(self, position: int):
         """Set playhead position from external source (like playback engine)"""

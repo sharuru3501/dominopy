@@ -367,6 +367,44 @@ class PerTrackAudioRouter(QObject):
         
         self.midi_out_ports.clear()
         print("All per-track audio resources cleaned up")
+    
+    def stop_all_notes(self):
+        """Stop all notes on all track instances"""
+        stopped_count = 0
+        
+        for track_index, instance in self.track_instances.items():
+            try:
+                if instance.source.source_type == AudioSourceType.SOUNDFONT:
+                    # Send all notes off to FluidSynth
+                    if instance.fluidsynth_instance:
+                        fs = instance.fluidsynth_instance
+                        # Send MIDI CC 123 (All Notes Off) on all channels
+                        for channel in range(16):
+                            try:
+                                fs.cc(channel, 123, 0)  # All Notes Off
+                                stopped_count += 1
+                            except:
+                                pass
+                        print(f"Sent all-notes-off to track {track_index} soundfont")
+                
+                elif instance.source.source_type == AudioSourceType.EXTERNAL_MIDI:
+                    # Send all notes off to external MIDI
+                    if instance.midi_out_port:
+                        for channel in range(16):
+                            try:
+                                # MIDI CC 123 (All Notes Off)
+                                midi_msg = [0xB0 | channel, 123, 0]
+                                instance.midi_out_port.send_message(midi_msg)
+                                stopped_count += 1
+                            except:
+                                pass
+                        print(f"Sent all-notes-off to track {track_index} MIDI device")
+                
+            except Exception as e:
+                print(f"Error stopping notes on track {track_index}: {e}")
+        
+        print(f"PerTrackAudioRouter: Sent all-notes-off to {stopped_count} channels")
+        return stopped_count > 0
 
 # Global per-track audio router instance
 _per_track_router: Optional[PerTrackAudioRouter] = None

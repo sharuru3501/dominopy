@@ -356,9 +356,16 @@ class PlaybackEngine(QObject):
     
     def _stop_all_notes(self):
         """Stop all currently playing notes"""
-        # Try MIDI routing first, fallback to audio manager
-        midi_router = get_midi_routing_manager()
+        # First try per-track audio routing with all-notes-off
+        per_track_router = get_per_track_audio_router()
+        per_track_success = False
         
+        if per_track_router:
+            # Use efficient all-notes-off for per-track routing
+            per_track_success = per_track_router.stop_all_notes()
+        
+        # Also try MIDI routing as fallback
+        midi_router = get_midi_routing_manager()
         if midi_router:
             # Use MIDI routing system
             for pitch in list(self.active_notes):
@@ -366,13 +373,17 @@ class PlaybackEngine(QObject):
                     midi_router.stop_note(0, pitch)  # Channel 0
                 except Exception as e:
                     print(f"PlaybackEngine: Error stopping note {pitch} via MIDI routing: {e}")
-        else:
-            # Fallback to direct audio manager
-            audio_manager = get_audio_manager()
-            if audio_manager:
-                for pitch in list(self.active_notes):
-                    audio_manager.stop_note_immediate(pitch)
         
+        # Final fallback to direct audio manager
+        audio_manager = get_audio_manager()
+        if audio_manager:
+            for pitch in list(self.active_notes):
+                try:
+                    audio_manager.stop_note_immediate(pitch)
+                except Exception as e:
+                    print(f"PlaybackEngine: Error stopping note {pitch} via audio manager: {e}")
+        
+        print(f"PlaybackEngine: Stop all notes (per-track: {'✅' if per_track_success else '❌'}, active notes: {len(self.active_notes)})")
         self.active_notes.clear()
     
     def get_state(self) -> PlaybackState:
