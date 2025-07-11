@@ -95,10 +95,26 @@ class TrackItemWidget(QFrame):
         # Track info
         track_info = self.track_manager.get_track_info(self.track_index) if self.track_manager else {}
         note_count = track_info.get('note_count', 0)
+        program = track_info.get('program', 1)
+        
+        # Create info layout
+        info_layout = QVBoxLayout()
+        info_layout.setSpacing(0)
+        info_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Note count
         self.info_label = QLabel(f"{note_count} notes")
         self.info_label.setFont(QFont("Arial", 8))
         self.info_label.setStyleSheet("color: #666666;")
-        layout.addWidget(self.info_label)
+        info_layout.addWidget(self.info_label)
+        
+        # Instrument (MIDI program)
+        self.program_label = QLabel(f"Prg {program}")
+        self.program_label.setFont(QFont("Arial", 7))
+        self.program_label.setStyleSheet("color: #888888;")
+        info_layout.addWidget(self.program_label)
+        
+        layout.addLayout(info_layout)
     
     def update_style(self):
         """Update the visual style based on active state"""
@@ -129,9 +145,11 @@ class TrackItemWidget(QFrame):
             self.is_active = active
             self.update_style()
     
-    def update_info(self, note_count: int):
+    def update_info(self, note_count: int, program: int = None):
         """Update track information display"""
         self.info_label.setText(f"{note_count} notes")
+        if program is not None and hasattr(self, 'program_label'):
+            self.program_label.setText(f"Prg {program}")
     
     def update_color(self, color: str):
         """Update the track color"""

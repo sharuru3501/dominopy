@@ -26,6 +26,46 @@ DEFAULT_TRACK_COLORS = [
     "#D5A6BD",  # Pink
 ]
 
+# Default track names (Domino-style orchestral setup)
+DEFAULT_TRACK_NAMES = [
+    "Piano",
+    "Strings",
+    "Brass",
+    "Woodwinds", 
+    "Percussion",
+    "Bass",
+    "Guitar",
+    "Vocals",
+    "Track 9",
+    "Track 10",
+    "Track 11",
+    "Track 12",
+    "Track 13",
+    "Track 14",
+    "Track 15",
+    "Track 16",
+]
+
+# Default MIDI programs (General MIDI instruments)
+DEFAULT_TRACK_PROGRAMS = [
+    1,   # Piano (Acoustic Grand Piano)
+    49,  # Strings (String Ensemble 1)
+    57,  # Brass (Trumpet)
+    65,  # Woodwinds (Soprano Sax)
+    115, # Percussion (Woodblock)
+    33,  # Bass (Electric Bass)
+    25,  # Guitar (Acoustic Guitar)
+    53,  # Vocals (Voice Oohs)
+    1,   # Track 9 (Piano)
+    1,   # Track 10 (Piano)
+    1,   # Track 11 (Piano)
+    1,   # Track 12 (Piano)
+    1,   # Track 13 (Piano)
+    1,   # Track 14 (Piano)
+    1,   # Track 15 (Piano)
+    1,   # Track 16 (Piano)
+]
+
 class TrackManager(QObject):
     """
     Manages multiple tracks, active track selection, and track operations
@@ -42,13 +82,13 @@ class TrackManager(QObject):
     
     def __init__(self, project: Optional[MidiProject] = None):
         super().__init__()
-        self.project = project
+        self.project = None
         self.active_track_index = 0
         self.track_colors: Dict[int, str] = {}  # track_index -> color
         
-        # Initialize colors for existing tracks
-        if self.project:
-            self._initialize_track_colors()
+        # Initialize with project if provided
+        if project:
+            self.set_project(project)
     
     def set_project(self, project: Optional[MidiProject]):
         """Set the MIDI project and initialize track management"""
@@ -58,9 +98,11 @@ class TrackManager(QObject):
         
         if self.project:
             self._initialize_track_colors()
-            # Ensure at least one track exists
+            # Initialize with Domino-style track setup (8 tracks minimum)
             if not self.project.tracks:
-                self.add_track("Track 1")
+                self._create_default_tracks()
+            elif len(self.project.tracks) < 8:
+                self._ensure_minimum_tracks()
         
         self.active_track_changed.emit(self.active_track_index)
         self.project_changed.emit()
@@ -78,6 +120,42 @@ class TrackManager(QObject):
                 self.track_colors[i] = DEFAULT_TRACK_COLORS[i % len(DEFAULT_TRACK_COLORS)]
                 # Store color in track object
                 track.color = self.track_colors[i]
+    
+    def _create_default_tracks(self):
+        """Create default Domino-style track setup (8 tracks)"""
+        print("TrackManager: Creating default 8-track setup")
+        for i in range(8):
+            name = DEFAULT_TRACK_NAMES[i]
+            color = DEFAULT_TRACK_COLORS[i % len(DEFAULT_TRACK_COLORS)]
+            program = DEFAULT_TRACK_PROGRAMS[i]
+            
+            track = MidiTrack(name=name, channel=i, program=program, color=color)
+            self.project.tracks.append(track)
+            self.track_colors[i] = color
+    
+    def _ensure_minimum_tracks(self):
+        """Ensure minimum 8 tracks exist"""
+        current_count = len(self.project.tracks)
+        print(f"TrackManager: Ensuring minimum tracks. Current: {current_count}")
+        
+        # First, fix existing tracks to use Domino names and settings
+        for i in range(min(current_count, 8)):
+            track = self.project.tracks[i]
+            track.name = DEFAULT_TRACK_NAMES[i]
+            track.program = DEFAULT_TRACK_PROGRAMS[i]
+            track.channel = i
+            track.color = DEFAULT_TRACK_COLORS[i % len(DEFAULT_TRACK_COLORS)]
+            self.track_colors[i] = track.color
+        
+        # Then add any missing tracks
+        for i in range(current_count, 8):
+            name = DEFAULT_TRACK_NAMES[i]
+            color = DEFAULT_TRACK_COLORS[i % len(DEFAULT_TRACK_COLORS)]
+            program = DEFAULT_TRACK_PROGRAMS[i]
+            
+            track = MidiTrack(name=name, channel=i, program=program, color=color)
+            self.project.tracks.append(track)
+            self.track_colors[i] = color
     
     def get_track_count(self) -> int:
         """Get the number of tracks"""
@@ -135,7 +213,7 @@ class TrackManager(QObject):
         
         self.track_color_changed.emit(track_index, color)
     
-    def add_track(self, name: str = None, color: str = None) -> int:
+    def add_track(self, name: str = None, color: str = None, program: int = None) -> int:
         """Add a new track and return its index"""
         if not self.project:
             return -1
@@ -144,15 +222,24 @@ class TrackManager(QObject):
         
         # Generate default name if not provided
         if not name:
-            name = f"Track {track_index + 1}"
+            if track_index < len(DEFAULT_TRACK_NAMES):
+                name = DEFAULT_TRACK_NAMES[track_index]
+            else:
+                name = f"Track {track_index + 1}"
         
         # Assign color from palette if not provided
         if not color:
             color = DEFAULT_TRACK_COLORS[track_index % len(DEFAULT_TRACK_COLORS)]
         
+        # Assign default program if not provided
+        if program is None:
+            if track_index < len(DEFAULT_TRACK_PROGRAMS):
+                program = DEFAULT_TRACK_PROGRAMS[track_index]
+            else:
+                program = 1  # Default to piano
+        
         # Create new track
-        new_track = MidiTrack(name=name, channel=track_index % 16)  # Cycle through MIDI channels
-        new_track.color = color
+        new_track = MidiTrack(name=name, channel=track_index % 16, program=program, color=color)
         
         # Add to project
         self.project.tracks.append(new_track)

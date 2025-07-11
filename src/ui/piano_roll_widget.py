@@ -15,6 +15,7 @@ from src.clipboard_system import global_clipboard
 from src.edit_modes import EditMode, EditModeManager
 from src.grid_system import GridManager, GridCell
 from src.audio_system import get_audio_manager
+from src.track_manager import get_track_manager
 import copy
 
 class PianoRollWidget(QWidget):
@@ -183,7 +184,14 @@ class PianoRollWidget(QWidget):
 
         # Draw MIDI notes
         if self.midi_project:
-            for track in self.midi_project.tracks:
+            track_manager = get_track_manager()
+            
+            for track_index, track in enumerate(self.midi_project.tracks):
+                # Get track color from TrackManager
+                track_color = "#61afef"  # Default blue color
+                if track_manager:
+                    track_color = track_manager.get_track_color(track_index)
+                
                 for note in track.notes:
                     x = self._tick_to_x(note.start_tick) + grid_start_x
                     y = self._pitch_to_y(note.pitch)
@@ -192,11 +200,15 @@ class PianoRollWidget(QWidget):
 
                     # Only draw if visible
                     if x < width and x + note_width > grid_start_x:
-                        # Draw note rectangle
+                        # Draw note rectangle with track color
                         if note in self.selected_notes:
-                            painter.setBrush(QColor("#f1fa8c")) # Yellow for selected notes
+                            # For selected notes, use a lighter version of track color
+                            base_color = QColor(track_color)
+                            lighter_color = base_color.lighter(150)  # 50% lighter
+                            painter.setBrush(lighter_color)
                         else:
-                            painter.setBrush(QColor("#61afef")) # Blue for unselected notes
+                            # Use track color for unselected notes
+                            painter.setBrush(QColor(track_color))
                         painter.setPen(Qt.NoPen)
                         painter.drawRect(int(x), int(y), int(note_width), int(note_height))
 
@@ -807,10 +819,25 @@ class PianoRollWidget(QWidget):
                 channel=0 # Default channel
             )
 
-            # Add to the first track of the current project using command system
+            # Add to the active track using command system
             if self.midi_project and self.midi_project.tracks:
-                command = AddNoteCommand(self.midi_project.tracks[0], new_note)
-                self.command_history.execute_command(command)
+                track_manager = get_track_manager()
+                if track_manager:
+                    # Get active track
+                    active_track = track_manager.get_active_track()
+                    if active_track:
+                        # Update note channel to match track
+                        new_note.channel = active_track.channel
+                        command = AddNoteCommand(active_track, new_note)
+                        self.command_history.execute_command(command)
+                    else:
+                        # Fallback to first track
+                        command = AddNoteCommand(self.midi_project.tracks[0], new_note)
+                        self.command_history.execute_command(command)
+                else:
+                    # Fallback to first track
+                    command = AddNoteCommand(self.midi_project.tracks[0], new_note)
+                    self.command_history.execute_command(command)
                 
                 # Update playback engine with new note
                 self._update_playback_engine()

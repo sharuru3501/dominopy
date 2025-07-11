@@ -159,12 +159,38 @@ class PyDominoMainWindow(QMainWindow):
         select_all_action.setShortcut("Ctrl+A")
         select_all_action.triggered.connect(self._select_all)
         
+        # Remove macOS automatic menu items (Emoji & Symbols, Start Dictation)
+        # Delay removal to ensure menu is fully initialized
+        QTimer.singleShot(500, lambda: self._remove_unwanted_menu_items(edit_menu))
+        
         # Settings Menu
         settings_menu = menu_bar.addMenu("&Settings")
         
         preferences_action = settings_menu.addAction("&Preferences...")
         preferences_action.setShortcut("Ctrl+Comma")
         preferences_action.triggered.connect(self._open_settings)
+    
+    def _remove_unwanted_menu_items(self, menu):
+        """Remove unwanted macOS automatic menu items"""
+        try:
+            # Get all actions in the menu
+            actions = menu.actions()
+            
+            # Find and remove unwanted items by text
+            actions_to_remove = []
+            for action in actions:
+                text = action.text()
+                # Remove Emoji & Symbols and Start Dictation
+                if "Emoji" in text or "Symbols" in text or "Start Dictation" in text:
+                    actions_to_remove.append(action)
+            
+            # Remove the actions
+            for action in actions_to_remove:
+                menu.removeAction(action)
+                print(f"Removed unwanted menu item: {action.text()}")
+                
+        except Exception as e:
+            print(f"Warning: Could not remove unwanted menu items: {e}")
 
     def _open_midi_file(self):
         file_dialog = QFileDialog(self)
@@ -393,8 +419,13 @@ class PyDominoMainWindow(QMainWindow):
     
     def _initialize_track_manager(self):
         """Initialize the track manager system"""
-        # Initialize with no project initially
-        track_manager = initialize_track_manager()
+        # Create default project with 8 Domino-style tracks
+        from src.midi_data_model import MidiProject
+        default_project = MidiProject()
+        default_project.ticks_per_beat = 480  # Standard MIDI resolution
+        
+        # Initialize track manager with default project
+        track_manager = initialize_track_manager(default_project)
         
         # Connect track list widget to track manager
         self.track_list.set_track_manager(track_manager)
@@ -402,7 +433,10 @@ class PyDominoMainWindow(QMainWindow):
         # Connect track selection to piano roll
         self.track_list.track_selected.connect(self._on_track_selected)
         
-        print("Track manager initialized successfully")
+        # Set the default project in piano roll
+        self.piano_roll.set_midi_project(default_project)
+        
+        print("Track manager initialized with 8 default tracks")
     
     def _on_track_selected(self, track_index: int):
         """Handle track selection"""
@@ -662,51 +696,68 @@ class PyDominoMainWindow(QMainWindow):
             self.playback_info_widget.update_playback_info(state, current_tick, tempo_bpm)
     
     def _create_test_song(self):
-        """Create a simple test song for playback verification"""
+        """Create a colorful test song to demonstrate track colors"""
         from src.midi_data_model import MidiProject, MidiTrack, MidiNote
         
         # Create new project
         project = MidiProject()
         project.ticks_per_beat = 480  # Standard MIDI resolution
         
-        # Create a track
-        track = MidiTrack(name="Test Track")
+        # Update track manager with new project first to get 8 tracks
+        track_manager = get_track_manager()
+        if track_manager:
+            track_manager.set_project(project)
         
-        # Create a simple melody: C4-E4-G4-C5 progression
-        # Each note is one beat (480 ticks) long
-        test_notes = [
-            MidiNote(pitch=60, start_tick=0, end_tick=480, velocity=100),      # C4 - Beat 1
-            MidiNote(pitch=64, start_tick=480, end_tick=960, velocity=100),    # E4 - Beat 2  
-            MidiNote(pitch=67, start_tick=960, end_tick=1440, velocity=100),   # G4 - Beat 3
-            MidiNote(pitch=72, start_tick=1440, end_tick=1920, velocity=100),  # C5 - Beat 4
-            MidiNote(pitch=67, start_tick=1920, end_tick=2400, velocity=100),  # G4 - Beat 5
-            MidiNote(pitch=64, start_tick=2400, end_tick=2880, velocity=100),  # E4 - Beat 6
-            MidiNote(pitch=60, start_tick=2880, end_tick=3360, velocity=100),  # C4 - Beat 7
-        ]
+        # Now add colorful demo notes to different tracks
+        if project.tracks and len(project.tracks) >= 4:
+            # Piano track (red) - Main melody
+            piano_notes = [
+                MidiNote(pitch=60, start_tick=0, end_tick=480, velocity=100, channel=0),      # C4
+                MidiNote(pitch=64, start_tick=480, end_tick=960, velocity=100, channel=0),    # E4
+                MidiNote(pitch=67, start_tick=960, end_tick=1440, velocity=100, channel=0),   # G4
+                MidiNote(pitch=72, start_tick=1440, end_tick=1920, velocity=100, channel=0),  # C5
+            ]
+            project.tracks[0].notes.extend(piano_notes)
+            
+            # Strings track (teal) - Harmony
+            strings_notes = [
+                MidiNote(pitch=48, start_tick=0, end_tick=1920, velocity=80, channel=1),      # Long C3
+                MidiNote(pitch=52, start_tick=960, end_tick=2880, velocity=80, channel=1),    # Long E3
+            ]
+            project.tracks[1].notes.extend(strings_notes)
+            
+            # Brass track (blue) - Accent notes
+            brass_notes = [
+                MidiNote(pitch=67, start_tick=1920, end_tick=2400, velocity=110, channel=2),  # G4
+                MidiNote(pitch=64, start_tick=2400, end_tick=2880, velocity=110, channel=2),  # E4
+                MidiNote(pitch=60, start_tick=2880, end_tick=3360, velocity=110, channel=2),  # C4
+            ]
+            project.tracks[2].notes.extend(brass_notes)
+            
+            # Bass track - Low notes
+            if len(project.tracks) >= 6:
+                bass_notes = [
+                    MidiNote(pitch=36, start_tick=0, end_tick=960, velocity=90, channel=5),    # C2
+                    MidiNote(pitch=40, start_tick=1920, end_tick=2880, velocity=90, channel=5), # E2
+                    MidiNote(pitch=36, start_tick=2880, end_tick=3360, velocity=90, channel=5), # C2
+                ]
+                project.tracks[5].notes.extend(bass_notes)
         
-        # Add notes to track
-        for note in test_notes:
-            track.notes.append(note)
-        
-        # Add track to project
-        project.add_track(track)
-        
-        # Set project in piano roll and playback engine
+        # Set project in piano roll
         self.piano_roll.set_midi_project(project)
         
         # Update playback engine with new project
         engine = get_playback_engine()
         if engine:
             engine.set_project(project)
-            print("Test song created and loaded into playback engine")
-        
-        # Update track manager with new project
-        track_manager = get_track_manager()
-        if track_manager:
-            track_manager.set_project(project)
+            print("Colorful test song created and loaded into playback engine")
         
         # Update UI
         self._update_project_ui(project)
         
-        print("Test song created: C4-E4-G4-C5-G4-E4-C4 melody")
+        print("🎨 Colorful test song created with notes in multiple tracks!")
+        print("   Piano (Red): Main melody C4-E4-G4-C5")
+        print("   Strings (Teal): Long harmony notes")
+        print("   Brass (Blue): Accent notes")
+        print("   Bass (Purple): Low bass notes")
 
