@@ -295,11 +295,11 @@ class MIDIRoutingManager(QObject):
             if command == 0x90 and message[2] > 0:  # Note On
                 pitch = message[1]
                 velocity = message[2]
-                audio_manager.play_note(channel, pitch, velocity)
+                audio_manager.play_note_immediate(pitch, velocity)
             
             elif command == 0x80 or (command == 0x90 and message[2] == 0):  # Note Off
                 pitch = message[1]
-                audio_manager.stop_note(channel, pitch)
+                audio_manager.stop_note_immediate(pitch)
     
     def play_note(self, channel: int, pitch: int, velocity: int):
         """Play a note through the routing system"""
