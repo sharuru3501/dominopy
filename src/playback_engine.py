@@ -311,13 +311,8 @@ class PlaybackEngine(QObject):
                     except Exception as e:
                         print(f"PlaybackEngine: Legacy MIDI routing error: {e}")
                 else:
-                    # Final fallback to direct audio manager
-                    audio_manager = get_audio_manager()
-                    if audio_manager:
-                        success = audio_manager.play_note_immediate(event.note.pitch, event.note.velocity)
-                        if success:
-                            self.active_notes.add(event.note.pitch)
-                            print(f"PlaybackEngine: Playing note {event.note.pitch} (direct audio)")
+                    # No MIDI routing available - respect routing settings
+                    print(f"PlaybackEngine: No MIDI routing available for note {event.note.pitch}")
         
         elif event.event_type == "note_off":
             if event.note.pitch in self.active_notes:

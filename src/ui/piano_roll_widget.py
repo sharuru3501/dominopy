@@ -1498,10 +1498,17 @@ class PianoRollWidget(QWidget):
             print(f"Chord Info: {info}")
     
     def _play_track_preview(self, pitch: int, velocity: int = 100):
-        """Play a preview note using the current track's audio source"""
-        # For now, just use the default audio manager to get sound working again
+        """Play a preview note using the current track's audio source via MIDI routing"""
+        from src.midi_routing import get_midi_routing_manager
         from src.audio_system import get_audio_manager
         
+        # Try MIDI routing first to respect routing settings
+        midi_router = get_midi_routing_manager()
+        if midi_router:
+            midi_router.play_note(0, pitch, velocity)  # Use channel 0 for preview
+            return True
+        
+        # Fallback to direct audio manager only if MIDI routing not available
         audio_manager = get_audio_manager()
         if audio_manager:
             return audio_manager.play_note_preview(pitch, velocity)
