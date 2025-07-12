@@ -294,8 +294,13 @@ class PerTrackAudioRouter(QObject):
         return True
     
     def _play_internal_note(self, instance: TrackAudioInstance, note: MidiNote) -> bool:
-        """Play note using internal FluidSynth (global audio manager)"""
-        if self.audio_manager:
+        """Play note using internal FluidSynth via MIDI routing system"""
+        if self.midi_routing_manager:
+            # Use MIDI routing system to respect enable_internal_audio setting
+            self.midi_routing_manager.play_note(note.channel, note.pitch, note.velocity)
+            return True
+        elif self.audio_manager:
+            # Fallback to direct audio manager if MIDI routing not available
             # Set program and channel for this track
             current_program = self.audio_manager.current_program
             current_channel = self.audio_manager.current_channel
@@ -314,8 +319,13 @@ class PerTrackAudioRouter(QObject):
         return False
     
     def _stop_internal_note(self, instance: TrackAudioInstance, note: MidiNote) -> bool:
-        """Stop note using internal FluidSynth (global audio manager)"""
-        if self.audio_manager:
+        """Stop note using internal FluidSynth via MIDI routing system"""
+        if self.midi_routing_manager:
+            # Use MIDI routing system to respect enable_internal_audio setting
+            self.midi_routing_manager.stop_note(note.channel, note.pitch)
+            return True
+        elif self.audio_manager:
+            # Fallback to direct audio manager if MIDI routing not available
             # Set channel for proper note-off
             self.audio_manager.set_channel(instance.source.channel)
             return self.audio_manager.stop_note_immediate(note.pitch)
