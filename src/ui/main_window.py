@@ -46,10 +46,12 @@ class PyDominoMainWindow(QMainWindow):
         piano_roll_container = QWidget()
         piano_roll_layout = QVBoxLayout(piano_roll_container)
         piano_roll_layout.setContentsMargins(0, 0, 0, 0)
+        piano_roll_layout.setSpacing(0)  # Remove spacing between widgets
         
         # Add measure bar at the top
         measure_bar_layout = QHBoxLayout()
         measure_bar_layout.setContentsMargins(0, 0, 0, 0)
+        measure_bar_layout.setSpacing(0)  # Remove spacing
         # Add spacer to align with piano roll (account for track list width)
         measure_bar_layout.addWidget(self.measure_bar)
         piano_roll_layout.addLayout(measure_bar_layout)
@@ -57,6 +59,7 @@ class PyDominoMainWindow(QMainWindow):
         # Horizontal layout for piano roll and vertical scrollbar
         h_layout = QHBoxLayout()
         h_layout.setContentsMargins(0, 0, 0, 0)
+        h_layout.setSpacing(0)  # Remove spacing
         h_layout.addWidget(self.piano_roll)
         
         # Vertical scrollbar
