@@ -189,7 +189,6 @@ class PianoRollWidget(QWidget):
             beats_per_measure = numerator * (4 / denominator)  # Normalize to quarter note beats
             ticks_per_measure = int(ticks_per_beat * beats_per_measure)
         
-        print(f"DEBUG: Time signature {numerator}/{denominator}, ticks_per_measure={ticks_per_measure}")
         
         # Draw measure lines with measure numbers
         painter.setFont(QFont("Arial", 8))
