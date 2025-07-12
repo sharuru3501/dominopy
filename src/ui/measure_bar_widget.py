@@ -27,7 +27,7 @@ class MeasureBarWidget(QWidget):
         # MIDI project reference
         self.midi_project: Optional[MidiProject] = None
         
-        # Styling
+        # Styling (match grid background)
         self.setStyleSheet("""
             MeasureBarWidget {
                 background-color: #282c34;
@@ -89,29 +89,19 @@ class MeasureBarWidget(QWidget):
         font.setBold(True)
         painter.setFont(font)
         
-        # Draw measure numbers
+        # Draw measure numbers aligned with pink measure lines
         measure_number = 1
         for tick in range(0, self.visible_end_tick + ticks_per_measure, ticks_per_measure):
             if tick >= self.visible_start_tick:
                 x = self._tick_to_x(tick) + self.grid_start_x
                 
-                # Draw measure separator line
-                painter.setPen(QColor("#6272a4"))  # Subtle line
-                painter.drawLine(int(x), 0, int(x), self.height())
-                
-                # Draw measure number
-                painter.setPen(QColor("#f8f8f2"))  # White text
+                # Draw measure number directly at the pink measure line position
+                painter.setPen(QColor("#000000"))  # Black text
                 text_rect = painter.fontMetrics().boundingRect(str(measure_number))
                 
-                # Center text in measure
-                if measure_number == 1:
-                    # First measure: start from grid start
-                    text_x = self.grid_start_x + 5
-                else:
-                    # Other measures: center between current and previous lines
-                    prev_x = self._tick_to_x(tick - ticks_per_measure) + self.grid_start_x
-                    text_x = int((prev_x + x) / 2 - text_rect.width() / 2)
-                
+                # Position text just to the right of the measure line
+                text_x = int(x) + 3  # Small offset from the line
                 text_y = (self.height() + text_rect.height()) // 2 - 2
+                
                 painter.drawText(text_x, text_y, str(measure_number))
                 measure_number += 1
