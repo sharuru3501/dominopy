@@ -21,7 +21,8 @@ class MeasureBarWidget(QWidget):
         self.visible_start_tick = 0
         self.visible_end_tick = 3840  # Default: 8 measures at 480 ticks per beat
         self.grid_width_pixels = 0.15  # Pixels per tick (zoom level)
-        self.grid_start_x = 0  # Left offset
+        self.piano_width = 80  # Width of piano keyboard (must match piano roll)
+        self.grid_start_x = self.piano_width  # Left offset to align with piano roll grid
         
         # MIDI project reference
         self.midi_project: Optional[MidiProject] = None
@@ -29,8 +30,8 @@ class MeasureBarWidget(QWidget):
         # Styling
         self.setStyleSheet("""
             MeasureBarWidget {
-                background-color: #2d3742;
-                border-bottom: 1px solid #44475a;
+                background-color: #44475a;
+                border-bottom: 1px solid #6272a4;
             }
         """)
     
@@ -40,12 +41,12 @@ class MeasureBarWidget(QWidget):
         self.update()
     
     def sync_with_piano_roll(self, visible_start_tick: int, visible_end_tick: int, 
-                           grid_width_pixels: float, grid_start_x: int):
+                           grid_width_pixels: float):
         """Synchronize display parameters with the piano roll"""
         self.visible_start_tick = visible_start_tick
         self.visible_end_tick = visible_end_tick
         self.grid_width_pixels = grid_width_pixels
-        self.grid_start_x = grid_start_x
+        # grid_start_x is fixed to piano_width for alignment
         self.update()
     
     def _tick_to_x(self, tick: int) -> float:
@@ -58,7 +59,12 @@ class MeasureBarWidget(QWidget):
         painter.setRenderHint(QPainter.Antialiasing)
         
         # Clear background
-        painter.fillRect(self.rect(), QColor("#2d3742"))
+        painter.fillRect(self.rect(), QColor("#44475a"))
+        
+        # Draw piano keyboard area (to match piano roll)
+        painter.fillRect(0, 0, self.piano_width, self.height(), QColor("#1e1e1e"))
+        painter.setPen(QColor("#6272a4"))
+        painter.drawLine(self.piano_width - 1, 0, self.piano_width - 1, self.height())
         
         # Get time signature information
         ticks_per_beat = self.midi_project.ticks_per_beat if self.midi_project else 480
@@ -82,7 +88,6 @@ class MeasureBarWidget(QWidget):
         font = QFont("Arial", 11)
         font.setBold(True)
         painter.setFont(font)
-        painter.setPen(QColor("#f8f8f2"))  # Light text
         
         # Draw measure numbers
         measure_number = 1
@@ -95,15 +100,15 @@ class MeasureBarWidget(QWidget):
                 painter.drawLine(int(x), 0, int(x), self.height())
                 
                 # Draw measure number
-                painter.setPen(QColor("#f8f8f2"))  # Light text
+                painter.setPen(QColor("#000000"))  # Black text
                 text_rect = painter.fontMetrics().boundingRect(str(measure_number))
                 
                 # Center text in measure
                 if measure_number == 1:
-                    # First measure: align to left
-                    text_x = int(x) + 5
+                    # First measure: start from grid start
+                    text_x = self.grid_start_x + 5
                 else:
-                    # Other measures: center between lines
+                    # Other measures: center between current and previous lines
                     prev_x = self._tick_to_x(tick - ticks_per_measure) + self.grid_start_x
                     text_x = int((prev_x + x) / 2 - text_rect.width() / 2)
                 
