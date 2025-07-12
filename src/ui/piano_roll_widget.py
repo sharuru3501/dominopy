@@ -283,8 +283,8 @@ class PianoRollWidget(QWidget):
         # y = height - ((pitch + 1) * pixels_per_pitch) + vertical_offset
         # pitch = ((height - y + vertical_offset) / pixels_per_pitch) - 1
         pitch = int((self.height() - y + self.vertical_offset) / self.pixels_per_pitch)
-        # Clamp pitch to valid MIDI range
-        return max(0, min(127, pitch))
+        # Clamp pitch to practical range
+        return max(0, min(108, pitch))
 
     def mousePressEvent(self, event):
         # Ensure this widget has focus for keyboard events
@@ -488,14 +488,14 @@ class PianoRollWidget(QWidget):
         elif event.key() == Qt.Key_Up:
             # Vertical scroll up (show higher pitches)
             self.vertical_offset += 50
-            max_offset = 127 * self.pixels_per_pitch - self.height()
+            max_offset = 108 * self.pixels_per_pitch - self.height()
             self.vertical_offset = min(max_offset, self.vertical_offset)
             self.update()
         
         elif event.key() == Qt.Key_Down:
             # Vertical scroll down (show lower pitches)
             self.vertical_offset -= 50
-            min_offset = -20 * self.pixels_per_pitch
+            min_offset = 0  # Don't scroll below C-1 (MIDI 0)
             self.vertical_offset = max(min_offset, self.vertical_offset)
             self.update()
         
@@ -605,8 +605,8 @@ class PianoRollWidget(QWidget):
                 scroll_amount = scroll_y / 120 * 30  # Convert to reasonable scroll amount
                 self.vertical_offset += scroll_amount
                 # Limit vertical scroll range
-                max_offset = 127 * self.pixels_per_pitch - self.height()
-                min_offset = -20 * self.pixels_per_pitch  # Show some notes below MIDI 0
+                max_offset = 108 * self.pixels_per_pitch - self.height()
+                min_offset = 0  # Don't scroll below C-1 (MIDI 0)
                 self.vertical_offset = max(min_offset, min(max_offset, self.vertical_offset))
                 self.update()
         elif event.modifiers() & Qt.AltModifier:

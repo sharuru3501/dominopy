@@ -770,8 +770,10 @@ class PyDominoMainWindow(QMainWindow):
     
     def _on_vertical_scroll(self, value):
         """Handle vertical scrollbar changes"""
-        # Convert scrollbar value to vertical offset
-        self.piano_roll.vertical_offset = value
+        # Convert scrollbar value (pitch) to vertical offset (pixels)
+        # value represents the lowest visible pitch
+        # We need to convert this to pixel offset
+        self.piano_roll.vertical_offset = value * self.piano_roll.pixels_per_pitch
         self.piano_roll.update()
             
     def _on_horizontal_scroll(self, value):
