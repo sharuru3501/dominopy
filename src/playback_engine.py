@@ -341,13 +341,9 @@ class PlaybackEngine(QObject):
                         except Exception as e:
                             print(f"PlaybackEngine: Legacy MIDI stop error: {e}")
                     else:
-                        # Final fallback to direct audio manager
-                        audio_manager = get_audio_manager()
-                        if audio_manager:
-                            success = audio_manager.stop_note_immediate(event.note.pitch)
-                            if success:
-                                self.active_notes.discard(event.note.pitch)
-                                print(f"PlaybackEngine: Stopping note {event.note.pitch} (direct audio)")
+                        # No MIDI routing available - respect routing settings
+                        print(f"PlaybackEngine: No MIDI routing available to stop note {event.note.pitch}")
+                        self.active_notes.discard(event.note.pitch)  # Remove from tracking anyway
     
     def _stop_all_notes(self):
         """Stop all currently playing notes"""

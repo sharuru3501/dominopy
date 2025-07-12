@@ -76,6 +76,9 @@ class PianoRollWidget(QWidget):
         # Grid system
         self.grid_manager = GridManager()
         
+        # Preview note tracking
+        self.active_preview_notes = set()  # Track currently playing preview notes
+        
         # Update grid settings to match piano roll
         if self.midi_project:
             self.grid_manager.update_grid_settings(self.midi_project.ticks_per_beat, 4)
@@ -1502,17 +1505,58 @@ class PianoRollWidget(QWidget):
         from src.midi_routing import get_midi_routing_manager
         from src.audio_system import get_audio_manager
         
+        # Stop any previous preview notes to prevent overlapping/sustained notes
+        self._stop_all_preview_notes()
+        
         # Try MIDI routing first to respect routing settings
         midi_router = get_midi_routing_manager()
         if midi_router:
             midi_router.play_note(0, pitch, velocity)  # Use channel 0 for preview
+            self.active_preview_notes.add(pitch)
+            
+            # Auto-stop the note after 500ms to prevent indefinite sustain
+            QTimer.singleShot(500, lambda: self._stop_track_preview(pitch))
             return True
         
         # Fallback to direct audio manager only if MIDI routing not available
         audio_manager = get_audio_manager()
         if audio_manager:
-            return audio_manager.play_note_preview(pitch, velocity)
+            result = audio_manager.play_note_preview(pitch, velocity)
+            if result:
+                self.active_preview_notes.add(pitch)
+                # Auto-stop the note after 500ms
+                QTimer.singleShot(500, lambda: self._stop_track_preview(pitch))
+            return result
         return False
+    
+    def _stop_track_preview(self, pitch: int):
+        """Stop a preview note using the current track's audio source via MIDI routing"""
+        from src.midi_routing import get_midi_routing_manager
+        from src.audio_system import get_audio_manager
+        
+        if pitch not in self.active_preview_notes:
+            return False  # Note is not currently playing
+        
+        # Try MIDI routing first to respect routing settings
+        midi_router = get_midi_routing_manager()
+        if midi_router:
+            midi_router.stop_note(0, pitch)  # Use channel 0 for preview
+            self.active_preview_notes.discard(pitch)
+            return True
+        
+        # Fallback to direct audio manager only if MIDI routing not available
+        audio_manager = get_audio_manager()
+        if audio_manager:
+            result = audio_manager.stop_note_preview(pitch)
+            if result:
+                self.active_preview_notes.discard(pitch)
+            return result
+        return False
+    
+    def _stop_all_preview_notes(self):
+        """Stop all currently playing preview notes"""
+        for pitch in list(self.active_preview_notes):  # Create copy to avoid modification during iteration
+            self._stop_track_preview(pitch)
     
     def set_playhead_position(self, position: int):
         """Set playhead position from external source (like playback engine)"""
