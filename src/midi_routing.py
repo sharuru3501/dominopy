@@ -268,12 +268,14 @@ class MIDIRoutingManager(QObject):
         
         try:
             if device.output_type == MIDIOutputType.INTERNAL_FLUIDSYNTH:
-                # Route to internal FluidSynth via audio system
-                self._route_to_internal_audio(message)
+                # Only route to internal FluidSynth if internal audio is enabled
+                if self.settings.enable_internal_audio:
+                    self._route_to_internal_audio(message)
             
             elif device.output_type == MIDIOutputType.EXTERNAL_DEVICE and connection != "internal":
-                # Send to external MIDI device
-                connection.send_message(message)
+                # Only send to external MIDI device if external routing is enabled
+                if self.settings.enable_external_routing:
+                    connection.send_message(message)
         
         except Exception as e:
             self.connection_error.emit(f"Error sending MIDI to {device.name}: {str(e)}")
