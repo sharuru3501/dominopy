@@ -190,26 +190,13 @@ class PianoRollWidget(QWidget):
             ticks_per_measure = int(ticks_per_beat * beats_per_measure)
         
         
-        # Draw measure lines with measure numbers
-        font = QFont("Arial", 12)
-        font.setBold(True)
-        painter.setFont(font)  # Larger, bold font
-        measure_number = 1
+        # Draw measure lines (numbers now handled by separate measure bar)
         for tick in range(0, self.visible_end_tick + ticks_per_measure, ticks_per_measure):
             if tick >= self.visible_start_tick:
                 x = self._tick_to_x(tick) + grid_start_x
                 # Draw measure line
                 painter.setPen(QColor("#ff79c6"))  # Pink/magenta for measures
                 painter.drawLine(int(x), 0, int(x), height)
-                
-                # Draw measure number at top with background for visibility
-                painter.setPen(QColor("#000000"))  # Black text
-                painter.setBrush(QColor("#ffffff"))  # White background
-                # Draw background rectangle for text
-                text_rect = painter.fontMetrics().boundingRect(str(measure_number))
-                painter.fillRect(int(x) + 5, 5, text_rect.width() + 4, text_rect.height() + 2, QColor("#ffffff"))
-                painter.drawText(int(x) + 7, 5 + text_rect.height(), str(measure_number))
-                measure_number += 1
         
         # Draw beat lines (lighter, subdivision within measures)
         if denominator == 8:

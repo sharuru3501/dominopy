@@ -18,6 +18,7 @@ from src.audio_source_manager import initialize_audio_source_manager, cleanup_au
 from src.per_track_audio_router import initialize_per_track_audio_router, cleanup_per_track_audio_router
 from src.ui.track_list_widget import TrackListWidget
 from src.ui.virtual_keyboard_widget import VirtualKeyboardWidget
+from src.ui.measure_bar_widget import MeasureBarWidget
 
 class PyDominoMainWindow(QMainWindow):
     def __init__(self):
@@ -38,10 +39,20 @@ class PyDominoMainWindow(QMainWindow):
         # Piano Roll Widget with custom scrollbars
         self.piano_roll = PianoRollWidget()
         
+        # Create measure bar widget
+        self.measure_bar = MeasureBarWidget()
+        
         # Create container widget with scrollbars
         piano_roll_container = QWidget()
         piano_roll_layout = QVBoxLayout(piano_roll_container)
         piano_roll_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Add measure bar at the top
+        measure_bar_layout = QHBoxLayout()
+        measure_bar_layout.setContentsMargins(0, 0, 0, 0)
+        # Add spacer to align with piano roll (account for track list width)
+        measure_bar_layout.addWidget(self.measure_bar)
+        piano_roll_layout.addLayout(measure_bar_layout)
         
         # Horizontal layout for piano roll and vertical scrollbar
         h_layout = QHBoxLayout()
@@ -850,6 +861,8 @@ class PyDominoMainWindow(QMainWindow):
             self.piano_roll.midi_project.set_global_time_signature(numerator, denominator)
             # Force piano roll to redraw with new time signature
             self.piano_roll.update()
+            # Update measure bar as well
+            self.measure_bar.update()
         
         print(f"Time signature changed to {numerator}/{denominator}")
     
@@ -862,6 +875,9 @@ class PyDominoMainWindow(QMainWindow):
             
             self.tempo_widget.set_tempo(tempo)
             self.time_sig_widget.set_time_signature(time_sig[0], time_sig[1])
+            
+            # Update measure bar with new project
+            self.measure_bar.set_midi_project(midi_project)
             
             print(f"Updated UI: Tempo={tempo} BPM, Time Signature={time_sig[0]}/{time_sig[1]}")
     
