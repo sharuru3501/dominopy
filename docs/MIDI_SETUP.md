@@ -160,7 +160,7 @@ Audio MIDI Setup
 3. DAW: MIDI入力を同じポートに設定
 
 > 📝 **コミュニティ募集中**: Windows/Linux環境での詳細手順をご存知の方は、
-> [GitHub Issues](https://github.com/[your-username]/pydominodev/issues) で
+> [GitHub Issues](https://github.com/your-username/pydomino/issues) で
 > 情報共有をお願いします！具体的な手順やスクリーンショットなど、
 > ユーザー同士で助け合いましょう。
 
@@ -285,8 +285,8 @@ PyDomino (FluidSynth) ──┬▶ 🔊 ピアノ音
 ## 🤝 コミュニティサポート
 
 **質問・情報共有:**
-- [GitHub Issues](https://github.com/[your-username]/pydominodev/issues) - 質問・バグ報告
-- [GitHub Discussions](https://github.com/[your-username]/pydominodev/discussions) - 一般的な議論
+- [GitHub Issues](https://github.com/your-username/pydomino/issues) - 質問・バグ報告
+- [GitHub Discussions](https://github.com/your-username/pydomino/discussions) - 一般的な議論
 
 **貢献をお待ちしています:**
 - Windows/Linux詳細手順の投稿

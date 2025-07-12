@@ -1,6 +1,8 @@
-# PyDomino MIDI Sequencer
+# 🎹 PyDomino MIDI Sequencer
 
-PyDomino は Python と PySide6 で構築されたモダンな MIDI シーケンサーです。
+**Modern MIDI sequencer inspired by Domino, built with Python & PySide6**
+
+PyDomino は Python と PySide6 で構築されたモダンな MIDI シーケンサーです。クラシックなMIDIシーケンサー「Domino」にインスパイアされ、現代的な技術で再構築されました。
 
 ## 特徴
 
@@ -11,6 +13,8 @@ PyDomino は Python と PySide6 で構築されたモダンな MIDI シーケン
 - **メトロノーム機能**: ビジュアル・オーディオガイド
 - **クロスプラットフォーム**: Windows、macOS、Linux対応
 - **ホットキー対応**: 効率的な作業フロー
+- **DAW連携**: Logic Pro、Ableton Live等との完全互換
+- **バーチャルキーボード**: リアルタイム演奏機能
 
 ## 開始方法
 
@@ -43,45 +47,37 @@ pydominodev/
 └── venv/                  # 仮想環境
 ```
 
-## ドキュメント
+## 📚 ドキュメント
 
-- [使用方法](docs/USAGE_GUIDE.md) - 基本的な使用方法
-- [技術仕様](docs/TECHNICAL_SPEC.md) - アーキテクチャと設計
-- [開発計画](docs/DEVELOPMENT_PLAN.md) - 開発ロードマップ
-- [オーディオ設定](docs/AUDIO_SETUP.md) - オーディオシステムの設定
-- [要件](docs/REQUIREMENTS.md) - システム要件
+- **[🎵 MIDI設定ガイド](docs/MIDI_SETUP.md)** - DAWとの連携方法（重要）
+- **[📖 使用方法](docs/USAGE_GUIDE.md)** - 基本的な使用方法
+- **[🔧 技術仕様](docs/TECHNICAL_SPEC.md)** - アーキテクチャと設計  
+- **[🔊 オーディオ設定](docs/AUDIO_SETUP.md)** - オーディオシステムの設定
 
-## トラブルシューティング
+## 🤝 コントリビューション
 
-### デバッグツール
-```bash
-# デバッグモードで実行
-python run_debug.py
+PyDominoへの貢献を歓迎します！
 
-# システム診断
-python tests/test_diagnostics.py
+1. **フォーク** このリポジトリをフォーク
+2. **ブランチ作成** (`git checkout -b feature/amazing-feature`)
+3. **コミット** (`git commit -m 'Add amazing feature'`)
+4. **プッシュ** (`git push origin feature/amazing-feature`)
+5. **プルリクエスト** 作成
 
-# オーディオデバッグ
-python tests/test_audio_debug.py
+## 📝 ライセンス
 
-# 安定性テスト
-python tests/test_stability.py
-```
+このプロジェクトは **MIT License** の下で公開されています。詳細は [LICENSE](LICENSE) ファイルを参照してください。
 
-### よくある問題
-- [クラッシュ修正ガイド](docs/CRASH_FIXES.md)
-- [ペースト問題の解決](docs/PASTE_TROUBLESHOOTING.md)
+### 依存関係ライセンス
+- **PySide6**: LGPL v3 / Commercial
+- **mido**: MIT License
+- **pyfluidsynth**: LGPL v2.1
 
-## 開発
+## 🙏 謝辞
 
-### テスト実行
-```bash
-# 全テスト実行
-python -m pytest tests/
+- **Domino** - オリジナルMIDIシーケンサーへの敬意とインスパイア
+- **オープンソースコミュニティ** - 素晴らしいライブラリとツールの提供
 
-# 特定のテスト
-python tests/test_features.py
-```
+---
 
-### ライセンス
-このプロジェクトはオープンソースです。
+**PyDomino** - Made with ❤️ for music creators
