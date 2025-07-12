@@ -11,6 +11,7 @@ from src.midi_data_model import MidiNote, MidiProject
 from src.audio_system import get_audio_manager
 from src.midi_routing import get_midi_routing_manager
 from src.per_track_audio_router import get_per_track_audio_router
+from src.logger import get_logger
 
 class PlaybackState(Enum):
     """Playback state enumeration"""
@@ -38,6 +39,7 @@ class PlaybackEngine(QObject):
     
     def __init__(self):
         super().__init__()
+        self.logger = get_logger(__name__)
         
         # Playback state
         self.state = PlaybackState.STOPPED
@@ -139,7 +141,7 @@ class PlaybackEngine(QObject):
         self.events.sort(key=lambda event: event.timestamp)
         self.next_event_index = 0
         
-        print(f"Prepared {len(self.events)} playback events. First event: {self.events[0] if self.events else 'N/A'}")
+        self.logger.debug(f"Prepared {len(self.events)} playback events. First event: {self.events[0] if self.events else 'N/A'}")
     
     def play(self):
         """Start or resume playback"""
@@ -147,7 +149,7 @@ class PlaybackEngine(QObject):
             return
         
         if not self.project or not self.events:
-            print("No project or events to play")
+            self.logger.debug("No project or events to play")
             return
         
         if self.state == PlaybackState.STOPPED:
@@ -165,7 +167,7 @@ class PlaybackEngine(QObject):
         self.timer.start(self.timer_interval)
         self.state_changed.emit(self.state)
         
-        print(f"Playback started from tick {self.current_tick}. start_time: {self.start_time}")
+        self.logger.debug(f"Playback started from tick {self.current_tick}. start_time: {self.start_time}")
     
     def pause(self):
         """Pause playback"""
@@ -178,7 +180,7 @@ class PlaybackEngine(QObject):
         self._stop_all_notes()
         self.state_changed.emit(self.state)
         
-        print(f"Playback paused at tick {self.current_tick}")
+        self.logger.debug(f"Playback paused at tick {self.current_tick}")
     
     def stop(self):
         """Stop playback and return to beginning"""
@@ -194,7 +196,7 @@ class PlaybackEngine(QObject):
         self.state_changed.emit(self.state)
         self.position_changed.emit(self.current_tick)
         
-        print("Playback stopped")
+        self.logger.debug("Playback stopped")
     
     def toggle_play_pause(self):
         """Toggle between play and pause"""
@@ -218,7 +220,7 @@ class PlaybackEngine(QObject):
         if was_playing:
             self.play()
         
-        print(f"Seeked to tick {self.current_tick}")
+        self.logger.debug(f"Seeked to tick {self.current_tick}")
     
     def seek_to_beginning(self):
         """Seek to the beginning"""
@@ -294,11 +296,11 @@ class PlaybackEngine(QObject):
                     success = per_track_router.play_note(event.track_index, event.note)
                     if success:
                         self.active_notes.add(event.note.pitch)
-                        print(f"PlaybackEngine: Playing note {event.note.pitch} on track {event.track_index} at tick {event.tick}")
+                        self.logger.debug(f"PlaybackEngine: Playing note {event.note.pitch} on track {event.track_index} at tick {event.tick}")
                     else:
-                        print(f"PlaybackEngine: Per-track routing failed for note {event.note.pitch} on track {event.track_index}")
+                        self.logger.debug(f"PlaybackEngine: Per-track routing failed for note {event.note.pitch} on track {event.track_index}")
                 except Exception as e:
-                    print(f"PlaybackEngine: Per-track routing error for note {event.note.pitch}: {e}")
+                    self.logger.debug(f"PlaybackEngine: Per-track routing error for note {event.note.pitch}: {e}")
             
             # Fallback to legacy routing if per-track routing failed
             if not success:
@@ -307,12 +309,12 @@ class PlaybackEngine(QObject):
                     try:
                         midi_router.play_note(event.note.channel, event.note.pitch, event.note.velocity)
                         self.active_notes.add(event.note.pitch)
-                        print(f"PlaybackEngine: Playing note {event.note.pitch} (legacy routing)")
+                        self.logger.debug(f"PlaybackEngine: Playing note {event.note.pitch} (legacy routing)")
                     except Exception as e:
-                        print(f"PlaybackEngine: Legacy MIDI routing error: {e}")
+                        self.logger.debug(f"PlaybackEngine: Legacy MIDI routing error: {e}")
                 else:
                     # No MIDI routing available - respect routing settings
-                    print(f"PlaybackEngine: No MIDI routing available for note {event.note.pitch}")
+                    self.logger.debug(f"PlaybackEngine: No MIDI routing available for note {event.note.pitch}")
         
         elif event.event_type == "note_off":
             if event.note.pitch in self.active_notes:
@@ -324,11 +326,11 @@ class PlaybackEngine(QObject):
                         success = per_track_router.stop_note(event.track_index, event.note)
                         if success:
                             self.active_notes.discard(event.note.pitch)
-                            print(f"PlaybackEngine: Stopping note {event.note.pitch} on track {event.track_index}")
+                            self.logger.debug(f"PlaybackEngine: Stopping note {event.note.pitch} on track {event.track_index}")
                         else:
-                            print(f"PlaybackEngine: Per-track stop failed for note {event.note.pitch}")
+                            self.logger.debug(f"PlaybackEngine: Per-track stop failed for note {event.note.pitch}")
                     except Exception as e:
-                        print(f"PlaybackEngine: Per-track routing error stopping note {event.note.pitch}: {e}")
+                        self.logger.debug(f"PlaybackEngine: Per-track routing error stopping note {event.note.pitch}: {e}")
                 
                 # Fallback to legacy routing if per-track routing failed
                 if not success:
@@ -337,12 +339,12 @@ class PlaybackEngine(QObject):
                         try:
                             midi_router.stop_note(event.note.channel, event.note.pitch)
                             self.active_notes.discard(event.note.pitch)
-                            print(f"PlaybackEngine: Stopping note {event.note.pitch} (legacy routing)")
+                            self.logger.debug(f"PlaybackEngine: Stopping note {event.note.pitch} (legacy routing)")
                         except Exception as e:
-                            print(f"PlaybackEngine: Legacy MIDI stop error: {e}")
+                            self.logger.debug(f"PlaybackEngine: Legacy MIDI stop error: {e}")
                     else:
                         # No MIDI routing available - respect routing settings
-                        print(f"PlaybackEngine: No MIDI routing available to stop note {event.note.pitch}")
+                        self.logger.debug(f"PlaybackEngine: No MIDI routing available to stop note {event.note.pitch}")
                         self.active_notes.discard(event.note.pitch)  # Remove from tracking anyway
     
     def _stop_all_notes(self):
@@ -363,7 +365,7 @@ class PlaybackEngine(QObject):
                 try:
                     midi_router.stop_note(0, pitch)  # Channel 0
                 except Exception as e:
-                    print(f"PlaybackEngine: Error stopping note {pitch} via MIDI routing: {e}")
+                    self.logger.debug(f"PlaybackEngine: Error stopping note {pitch} via MIDI routing: {e}")
         
         # Final fallback to direct audio manager
         audio_manager = get_audio_manager()
@@ -372,9 +374,9 @@ class PlaybackEngine(QObject):
                 try:
                     audio_manager.stop_note_immediate(pitch)
                 except Exception as e:
-                    print(f"PlaybackEngine: Error stopping note {pitch} via audio manager: {e}")
+                    self.logger.debug(f"PlaybackEngine: Error stopping note {pitch} via audio manager: {e}")
         
-        print(f"PlaybackEngine: Stop all notes (per-track: {'✅' if per_track_success else '❌'}, active notes: {len(self.active_notes)})")
+        self.logger.debug(f"PlaybackEngine: Stop all notes (per-track: {'✅' if per_track_success else '❌'}, active notes: {len(self.active_notes)})")
         self.active_notes.clear()
     
     def get_state(self) -> PlaybackState:
@@ -397,7 +399,7 @@ class PlaybackEngine(QObject):
         """Clean up resources"""
         self.stop()
         self.timer.stop()
-        print("Playback engine cleaned up")
+        self.logger.debug("Playback engine cleaned up")
 
 # Global playback engine instance
 playback_engine: Optional[PlaybackEngine] = None

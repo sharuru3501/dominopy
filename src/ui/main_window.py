@@ -5,6 +5,7 @@ from PySide6.QtGui import QAction, QIcon
 from PySide6.QtCore import Qt, QTimer
 from src.ui.piano_roll_widget import PianoRollWidget
 from src.ui.status_bar import PyDominoStatusBar
+from src.logger import get_logger
 from src.ui.compact_tempo_widget import (CompactTempoWidget, CompactTimeSignatureWidget, 
                                        CompactMusicInfoWidget, CompactPlaybackInfoWidget, 
                                        ToolbarSeparator)
@@ -22,6 +23,7 @@ from src.ui.virtual_keyboard_widget import VirtualKeyboardWidget
 class PyDominoMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.logger = get_logger(__name__)
         self.setWindowTitle("PyDomino")
         self.setGeometry(100, 100, 800, 600) # x, y, width, height
 
@@ -200,10 +202,10 @@ class PyDominoMainWindow(QMainWindow):
             # Remove the actions
             for action in actions_to_remove:
                 menu.removeAction(action)
-                print(f"Removed unwanted menu item: {action.text()}")
+                self.logger.debug(f"Removed unwanted menu item: {action.text()}")
                 
         except Exception as e:
-            print(f"Warning: Could not remove unwanted menu items: {e}")
+            self.logger.info(f"Warning: Could not remove unwanted menu items: {e}")
 
     def _open_midi_file(self):
         file_dialog = QFileDialog(self)
@@ -241,7 +243,7 @@ class PyDominoMainWindow(QMainWindow):
                     self.setWindowTitle(f"PyDomino - {file_path}")
                     self.status_bar.update_project_name(file_path.split('/')[-1])
                 except Exception as e:
-                    print(f"Error loading MIDI file: {e}")
+                    self.logger.info(f"Error loading MIDI file: {e}")
                     # TODO: Show error message to user
     
     def _undo(self):
@@ -298,14 +300,14 @@ class PyDominoMainWindow(QMainWindow):
                     else:
                         self.music_info_widget.update_notes([])
                 except Exception as e:
-                    print(f"Error updating music info: {e}")
+                    self.logger.info(f"Error updating music info: {e}")
                     # Fallback: just clear the display
                     self.music_info_widget.update_notes([])
             
-            print("Settings applied - UI components updated")
+            self.logger.info("Settings applied - UI components updated")
             
         except Exception as e:
-            print(f"Error in settings applied handler: {e}")
+            self.logger.info(f"Error in settings applied handler: {e}")
             import traceback
             traceback.print_exc()
     
@@ -411,10 +413,10 @@ class PyDominoMainWindow(QMainWindow):
         # Initialize audio manager
         init_result = initialize_audio_manager(audio_settings)
         if init_result:
-            print("Audio system initialized successfully")
+            self.logger.info("Audio system initialized successfully")
         else:
-            print("Warning: Audio system initialization failed")
-        print(f"_initialize_audio_system() received: {init_result}")
+            self.logger.info("Warning: Audio system initialization failed")
+        self.logger.info(f"_initialize_audio_system() received: {init_result}")
     
     def _initialize_audio_source_manager(self):
         """Initialize the audio source manager"""
@@ -427,9 +429,9 @@ class PyDominoMainWindow(QMainWindow):
         # Initialize audio source manager
         audio_source_manager = initialize_audio_source_manager(soundfont_directory)
         
-        print(f"Audio source manager initialized with {len(audio_source_manager.get_available_sources())} sources")
-        print(f"  Soundfonts: {len(audio_source_manager.get_soundfont_sources())}")
-        print(f"  MIDI devices: {len(audio_source_manager.get_midi_sources())}")
+        self.logger.info(f"Audio source manager initialized with {len(audio_source_manager.get_available_sources())} sources")
+        self.logger.info(f"  Soundfonts: {len(audio_source_manager.get_soundfont_sources())}")
+        self.logger.info(f"  MIDI devices: {len(audio_source_manager.get_midi_sources())}")
     
     def _initialize_per_track_router(self):
         """Initialize the per-track audio router"""
@@ -442,7 +444,7 @@ class PyDominoMainWindow(QMainWindow):
         if router.audio_source_manager:
             router.audio_source_manager.validate_track_assignments(8)
         
-        print("Per-track audio router initialized")
+        self.logger.info("Per-track audio router initialized")
     
     def _initialize_virtual_keyboard(self):
         """Initialize the virtual keyboard"""
@@ -455,21 +457,21 @@ class PyDominoMainWindow(QMainWindow):
         # Update virtual keyboard with current track info
         self._update_virtual_keyboard_track_info()
         
-        print("Virtual keyboard initialized")
+        self.logger.info("Virtual keyboard initialized")
     
     def _initialize_midi_routing(self):
         """Initialize the MIDI routing system"""
         init_result = initialize_midi_routing()
         if init_result:
-            print("MIDI routing system initialized successfully")
+            self.logger.info("MIDI routing system initialized successfully")
             
             # Set default routing to internal FluidSynth
             midi_router = get_midi_routing_manager()
             if midi_router:
                 midi_router.set_primary_output("internal_fluidsynth")
-                print("Default MIDI routing set to internal FluidSynth")
+                self.logger.info("Default MIDI routing set to internal FluidSynth")
         else:
-            print("Warning: MIDI routing system initialization failed")
+            self.logger.info("Warning: MIDI routing system initialization failed")
     
     def _initialize_track_manager(self):
         """Initialize the track manager system"""
@@ -490,11 +492,11 @@ class PyDominoMainWindow(QMainWindow):
         # Set the default project in piano roll
         self.piano_roll.set_midi_project(default_project)
         
-        print("Track manager initialized with 8 default tracks")
+        self.logger.info("Track manager initialized with 8 default tracks")
     
     def _on_track_selected(self, track_index: int):
         """Handle track selection"""
-        print(f"Track {track_index} selected")
+        self.logger.info(f"Track {track_index} selected")
         # Piano roll will be updated to show only this track's notes
         self.piano_roll.update()  # Refresh display
         
@@ -505,32 +507,32 @@ class PyDominoMainWindow(QMainWindow):
         """Handle window close event"""
         # Clean up playback engine
         cleanup_playback_engine()
-        print("Playback engine cleaned up")
+        self.logger.info("Playback engine cleaned up")
         
         # Clean up MIDI routing system
         cleanup_midi_routing()
-        print("MIDI routing system cleaned up")
+        self.logger.info("MIDI routing system cleaned up")
         
         # Clean up track manager
         cleanup_track_manager()
-        print("Track manager cleaned up")
+        self.logger.info("Track manager cleaned up")
         
         # Clean up per-track audio router
         cleanup_per_track_audio_router()
-        print("Per-track audio router cleaned up")
+        self.logger.info("Per-track audio router cleaned up")
         
         # Clean up audio source manager
         cleanup_audio_source_manager()
-        print("Audio source manager cleaned up")
+        self.logger.info("Audio source manager cleaned up")
         
         # Clean up virtual keyboard
         if hasattr(self, 'virtual_keyboard') and self.virtual_keyboard:
             self.virtual_keyboard.close()
-            print("Virtual keyboard cleaned up")
+            self.logger.info("Virtual keyboard cleaned up")
         
         # Clean up audio system
         cleanup_audio_manager()
-        print("Audio system cleaned up")
+        self.logger.info("Audio system cleaned up")
         
         # Accept the close event
         event.accept()
@@ -544,11 +546,11 @@ class PyDominoMainWindow(QMainWindow):
             # Play C4 (MIDI note 60)
             success = audio_manager.play_note_preview(60, 100)
             if success:
-                print("Test audio: Playing C4")
+                self.logger.info("Test audio: Playing C4")
             else:
-                print("Test audio: Failed to play note")
+                self.logger.info("Test audio: Failed to play note")
         else:
-            print("Test audio: Audio manager not available")
+            self.logger.info("Test audio: Audio manager not available")
     
     def _open_midi_routing(self):
         """Open MIDI output settings dialog"""
@@ -558,10 +560,10 @@ class PyDominoMainWindow(QMainWindow):
             result = dialog.exec()
             
             if result == QDialog.Accepted:
-                print("MIDI output settings updated")
+                self.logger.info("MIDI output settings updated")
             
         except Exception as e:
-            print(f"Error opening MIDI output dialog: {e}")
+            self.logger.info(f"Error opening MIDI output dialog: {e}")
             QMessageBox.warning(self, "Error", f"Failed to open MIDI settings:\\n{str(e)}")
     
     def _toggle_virtual_keyboard(self):
@@ -576,7 +578,7 @@ class PyDominoMainWindow(QMainWindow):
                 # Update track info when showing
                 self._update_virtual_keyboard_track_info()
         else:
-            print("Virtual keyboard not initialized")
+            self.logger.info("Virtual keyboard not initialized")
     
     def _on_virtual_key_pressed(self, pitch: int, velocity: int):
         """Handle virtual keyboard key press"""
@@ -588,7 +590,7 @@ class PyDominoMainWindow(QMainWindow):
         track_manager = get_track_manager()
         if track_manager:
             active_track_index = track_manager.get_active_track_index()
-            print(f"Virtual keyboard: Active track index: {active_track_index}")
+            self.logger.info(f"Virtual keyboard: Active track index: {active_track_index}")
             
             # Try per-track audio routing
             per_track_router = get_per_track_audio_router()
@@ -599,9 +601,9 @@ class PyDominoMainWindow(QMainWindow):
                 if audio_source_manager:
                     track_source = audio_source_manager.get_track_source(active_track_index)
                     if track_source:
-                        print(f"Virtual keyboard: Track {active_track_index} source: {track_source.name} (type: {track_source.source_type})")
+                        self.logger.info(f"Virtual keyboard: Track {active_track_index} source: {track_source.name} (type: {track_source.source_type})")
                     else:
-                        print(f"Virtual keyboard: No audio source assigned to track {active_track_index}")
+                        self.logger.info(f"Virtual keyboard: No audio source assigned to track {active_track_index}")
                 
                 # Create a note for the virtual keyboard
                 virtual_note = MidiNote(
@@ -612,15 +614,15 @@ class PyDominoMainWindow(QMainWindow):
                     channel=active_track_index % 16
                 )
                 
-                print(f"Virtual keyboard: Calling per_track_router.play_note({active_track_index}, pitch={pitch})")
+                self.logger.info(f"Virtual keyboard: Calling per_track_router.play_note({active_track_index}, pitch={pitch})")
                 success = per_track_router.play_note(active_track_index, virtual_note)
-                print(f"Virtual keyboard: per_track_router.play_note returned: {success}")
+                self.logger.info(f"Virtual keyboard: per_track_router.play_note returned: {success}")
                 if success:
-                    print(f"Virtual keyboard: Playing pitch {pitch} on track {active_track_index}")
+                    self.logger.info(f"Virtual keyboard: Playing pitch {pitch} on track {active_track_index}")
                     return
         
         # No per-track routing available - respect MIDI routing settings
-        print(f"Virtual keyboard: No per-track routing available for pitch {pitch}")
+        self.logger.info(f"Virtual keyboard: No per-track routing available for pitch {pitch}")
     
     def _on_virtual_key_released(self, pitch: int):
         """Handle virtual keyboard key release"""
@@ -647,11 +649,11 @@ class PyDominoMainWindow(QMainWindow):
                 
                 success = per_track_router.stop_note(active_track_index, virtual_note)
                 if success:
-                    print(f"Virtual keyboard: Stopped pitch {pitch} on track {active_track_index}")
+                    self.logger.info(f"Virtual keyboard: Stopped pitch {pitch} on track {active_track_index}")
                     return
         
         # No per-track routing available - respect MIDI routing settings
-        print(f"Virtual keyboard: No per-track routing available to stop pitch {pitch}")
+        self.logger.info(f"Virtual keyboard: No per-track routing available to stop pitch {pitch}")
     
     def _update_virtual_keyboard_track_info(self):
         """Update virtual keyboard with current track information"""
@@ -674,35 +676,35 @@ class PyDominoMainWindow(QMainWindow):
     
     def _toggle_playback(self):
         """Toggle between play and pause"""
-        print("MainWindow: _toggle_playback called")
+        self.logger.info("MainWindow: _toggle_playback called")
         engine = get_playback_engine()
         if engine:
-            print(f"MainWindow: Found engine, state: {engine.get_state()}")
+            self.logger.info(f"MainWindow: Found engine, state: {engine.get_state()}")
             engine.toggle_play_pause()
-            print(f"MainWindow: After toggle, state: {engine.get_state()}")
+            self.logger.info(f"MainWindow: After toggle, state: {engine.get_state()}")
             self._update_playback_buttons()
         else:
-            print("MainWindow: No playback engine found!")
+            self.logger.info("MainWindow: No playback engine found!")
     
     def toggle_playback(self):
         """Public method for external access (like piano roll widget)"""
-        print("MainWindow: toggle_playback called")
+        self.logger.info("MainWindow: toggle_playback called")
         self._toggle_playback()
     
     def _rewind_playhead(self):
         """Rewind playhead to the beginning (t=0)"""
-        print("MainWindow: _rewind_playhead called")
+        self.logger.info("MainWindow: _rewind_playhead called")
         engine = get_playback_engine()
         if engine:
             engine.seek_to_tick(0)
-            print("MainWindow: Seeked to tick 0")
+            self.logger.info("MainWindow: Seeked to tick 0")
             
             # Update piano roll playhead position
             if hasattr(self, 'piano_roll') and self.piano_roll:
                 self.piano_roll.playhead_position = 0
                 self.piano_roll.update()
         else:
-            print("MainWindow: No playback engine found for rewind!")
+            self.logger.info("MainWindow: No playback engine found for rewind!")
     
     def update_chord_display(self, chord_info: str):
         """Update chord display in the top bar"""
@@ -714,7 +716,7 @@ class PyDominoMainWindow(QMainWindow):
         if hasattr(self, 'status_bar') and self.status_bar:
             self.status_bar.showMessage(chord_info, 3000)  # Show for 3 seconds
         
-        print(f"Chord Display: {chord_info}")
+        self.logger.info(f"Chord Display: {chord_info}")
     
     def _stop_playback(self):
         """Stop playback"""
@@ -752,7 +754,7 @@ class PyDominoMainWindow(QMainWindow):
         # Connect piano roll to playback engine
         self.piano_roll.connect_playback_engine(engine)
         
-        print("Playback engine initialized")
+        self.logger.info("Playback engine initialized")
     
     def _on_vertical_scroll(self, value):
         """Handle vertical scrollbar changes"""
@@ -769,7 +771,7 @@ class PyDominoMainWindow(QMainWindow):
     def _on_playback_state_changed(self, state: PlaybackState):
         """Handle playback state changes"""
         self._update_playback_buttons()
-        print(f"Playback state changed to: {state.value}")
+        self.logger.info(f"Playback state changed to: {state.value}")
     
     def _create_music_toolbar(self):
         """Create music information and control toolbar"""
@@ -833,7 +835,7 @@ class PyDominoMainWindow(QMainWindow):
             self.music_info_widget.set_project(self.piano_roll.midi_project)
 # Debug output removed for cleaner logs
         
-        print("UI signals connected")
+        self.logger.info("UI signals connected")
     
     def _on_tempo_changed(self, bpm: float):
         """Handle tempo changes from UI"""
@@ -841,7 +843,7 @@ class PyDominoMainWindow(QMainWindow):
         if hasattr(self.piano_roll, 'midi_project') and self.piano_roll.midi_project:
             self.piano_roll.midi_project.set_global_tempo(bpm)
         
-        print(f"Tempo changed to {bpm} BPM")
+        self.logger.info(f"Tempo changed to {bpm} BPM")
     
     def _on_time_signature_changed(self, numerator: int, denominator: int):
         """Handle time signature changes from UI"""
@@ -849,7 +851,7 @@ class PyDominoMainWindow(QMainWindow):
         if hasattr(self.piano_roll, 'midi_project') and self.piano_roll.midi_project:
             self.piano_roll.midi_project.set_global_time_signature(numerator, denominator)
         
-        print(f"Time signature changed to {numerator}/{denominator}")
+        self.logger.info(f"Time signature changed to {numerator}/{denominator}")
     
     def _update_project_ui(self, midi_project):
         """Update UI elements when a new project is loaded"""
@@ -861,7 +863,7 @@ class PyDominoMainWindow(QMainWindow):
             self.tempo_widget.set_tempo(tempo)
             self.time_sig_widget.set_time_signature(time_sig[0], time_sig[1])
             
-            print(f"Updated UI: Tempo={tempo} BPM, Time Signature={time_sig[0]}/{time_sig[1]}")
+            self.logger.info(f"Updated UI: Tempo={tempo} BPM, Time Signature={time_sig[0]}/{time_sig[1]}")
     
     def _update_playback_info(self):
         """Update playback information in toolbar"""
@@ -928,14 +930,14 @@ class PyDominoMainWindow(QMainWindow):
         engine = get_playback_engine()
         if engine:
             engine.set_project(project)
-            print("Colorful test song created and loaded into playback engine")
+            self.logger.info("Colorful test song created and loaded into playback engine")
         
         # Update UI
         self._update_project_ui(project)
         
-        print("🎨 Colorful test song created with notes in multiple tracks!")
-        print("   Track00 (Red): Main melody C4-E4-G4-C5")
-        print("   Track01 (Teal): Long harmony notes")
-        print("   Track02 (Blue): Accent notes")
-        print("   Track05 (Purple): Low bass notes")
+        self.logger.info("🎨 Colorful test song created with notes in multiple tracks!")
+        self.logger.info("   Track00 (Red): Main melody C4-E4-G4-C5")
+        self.logger.info("   Track01 (Teal): Long harmony notes")
+        self.logger.info("   Track02 (Blue): Accent notes")
+        self.logger.info("   Track05 (Purple): Low bass notes")
 

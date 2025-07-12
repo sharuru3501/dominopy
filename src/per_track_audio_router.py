@@ -11,6 +11,7 @@ from src.midi_data_model import MidiNote
 from src.audio_source_manager import AudioSource, AudioSourceType, get_audio_source_manager
 from src.audio_system import get_audio_manager
 from src.midi_routing import get_midi_routing_manager
+from src.logger import get_logger
 
 try:
     import fluidsynth
@@ -44,6 +45,7 @@ class PerTrackAudioRouter(QObject):
     
     def __init__(self):
         super().__init__()
+        self.logger = get_logger(__name__)
         
         # Track audio instances
         self.track_instances: Dict[int, TrackAudioInstance] = {}
@@ -69,13 +71,13 @@ class PerTrackAudioRouter(QObject):
             self._update_manager_references()
         
         if not self.audio_source_manager:
-            print(f"No audio source manager available for track {track_index}")
+            self.logger.debug(f"No audio source manager available for track {track_index}")
             return False
         
         # Get assigned audio source
         source = self.audio_source_manager.get_track_source(track_index)
         if not source:
-            print(f"No audio source assigned to track {track_index}")
+            self.logger.debug(f"No audio source assigned to track {track_index}")
             return False
         
         # Clean up existing instance
@@ -91,10 +93,10 @@ class PerTrackAudioRouter(QObject):
             success = self._initialize_internal_fluidsynth(track_index, source)
         
         if success:
-            print(f"Track {track_index} audio initialized: {source.name}")
+            self.logger.debug(f"Track {track_index} audio initialized: {source.name}")
             self.routing_success.emit(f"Track{track_index:02d}", source.name)
         else:
-            print(f"Failed to initialize audio for track {track_index}: {source.name}")
+            self.logger.debug(f"Failed to initialize audio for track {track_index}: {source.name}")
             self.routing_error.emit(f"Track{track_index:02d}", f"Failed to initialize {source.name}")
         
         return success
@@ -102,11 +104,11 @@ class PerTrackAudioRouter(QObject):
     def _initialize_soundfont_audio(self, track_index: int, source: AudioSource) -> bool:
         """Initialize a dedicated FluidSynth instance for a soundfont"""
         if not FLUIDSYNTH_AVAILABLE:
-            print("FluidSynth not available for soundfont audio")
+            self.logger.debug("FluidSynth not available for soundfont audio")
             return False
         
         if not source.file_path or not os.path.exists(source.file_path):
-            print(f"Soundfont file not found: {source.file_path}")
+            self.logger.debug(f"Soundfont file not found: {source.file_path}")
             return False
         
         try:
@@ -117,14 +119,14 @@ class PerTrackAudioRouter(QObject):
             # Load soundfont
             soundfont_id = fs.sfload(source.file_path)
             if soundfont_id == -1:
-                print(f"Failed to load soundfont: {source.file_path}")
+                self.logger.debug(f"Failed to load soundfont: {source.file_path}")
                 fs.delete()
                 return False
             
             # Select program for this track (use program 0 = piano as fallback)
             program_number = max(0, min(127, source.program - 1))  # Ensure valid range 0-127
             fs.program_select(source.channel, soundfont_id, 0, program_number)
-            print(f"FluidSynth: Selected program {program_number} for {source.name}")
+            self.logger.debug(f"FluidSynth: Selected program {program_number} for {source.name}")
             
             # Create track instance
             instance = TrackAudioInstance(
@@ -135,17 +137,17 @@ class PerTrackAudioRouter(QObject):
             )
             
             self.track_instances[track_index] = instance
-            print(f"Soundfont audio initialized for track {track_index}: {source.name}")
+            self.logger.debug(f"Soundfont audio initialized for track {track_index}: {source.name}")
             return True
             
         except Exception as e:
-            print(f"Error initializing soundfont audio: {e}")
+            self.logger.debug(f"Error initializing soundfont audio: {e}")
             return False
     
     def _initialize_external_midi(self, track_index: int, source: AudioSource) -> bool:
         """Initialize external MIDI output for a track"""
         if not RTMIDI_AVAILABLE:
-            print("rtmidi not available for external MIDI")
+            self.logger.debug("rtmidi not available for external MIDI")
             return False
         
         try:
@@ -160,12 +162,12 @@ class PerTrackAudioRouter(QObject):
                 available_ports = midi_out.get_ports()
                 port_index = -1
                 
-                print(f"PerTrackRouter: Looking for MIDI port: '{source.midi_port_name}'")
-                print(f"PerTrackRouter: Available ports: {[str(p) for p in available_ports]}")
+                self.logger.debug(f"PerTrackRouter: Looking for MIDI port: '{source.midi_port_name}'")
+                self.logger.debug(f"PerTrackRouter: Available ports: {[str(p) for p in available_ports]}")
                 
                 for i, port_name in enumerate(available_ports):
                     port_name_str = str(port_name)
-                    print(f"PerTrackRouter: Checking port {i}: '{port_name_str}' contains '{source.midi_port_name}'?")
+                    self.logger.debug(f"PerTrackRouter: Checking port {i}: '{port_name_str}' contains '{source.midi_port_name}'?")
                     
                     # Handle encoding issues on macOS for IAC Driver ports
                     if "IAC" in port_name_str and "IAC Driver Bus" in source.midi_port_name:
@@ -179,20 +181,20 @@ class PerTrackAudioRouter(QObject):
                         if bus_chars:
                             detected_bus = ''.join(bus_chars)
                             expected_bus = source.midi_port_name.split()[-1]  # Extract number from "IAC Driver Bus 1"
-                            print(f"PerTrackRouter: IAC port detected - bus number: {detected_bus}, expected: {expected_bus}")
+                            self.logger.debug(f"PerTrackRouter: IAC port detected - bus number: {detected_bus}, expected: {expected_bus}")
                             
                             if detected_bus == expected_bus:
                                 port_index = i
-                                print(f"PerTrackRouter: Found matching IAC Driver Bus {detected_bus} at index {i}")
+                                self.logger.debug(f"PerTrackRouter: Found matching IAC Driver Bus {detected_bus} at index {i}")
                                 break
                     elif source.midi_port_name in port_name_str:
                         port_index = i
-                        print(f"PerTrackRouter: Found matching port at index {i}")
+                        self.logger.debug(f"PerTrackRouter: Found matching port at index {i}")
                         break
                 
                 if port_index == -1:
-                    print(f"MIDI port not found: {source.midi_port_name}")
-                    print(f"Available port names: {[str(p) for p in available_ports]}")
+                    self.logger.debug(f"MIDI port not found: {source.midi_port_name}")
+                    self.logger.debug(f"Available port names: {[str(p) for p in available_ports]}")
                     midi_out.close_port()
                     del midi_out
                     return False
@@ -209,11 +211,11 @@ class PerTrackAudioRouter(QObject):
             )
             
             self.track_instances[track_index] = instance
-            print(f"External MIDI initialized for track {track_index}: {source.name}")
+            self.logger.debug(f"External MIDI initialized for track {track_index}: {source.name}")
             return True
             
         except Exception as e:
-            print(f"Error initializing external MIDI: {e}")
+            self.logger.debug(f"Error initializing external MIDI: {e}")
             return False
     
     def _initialize_internal_fluidsynth(self, track_index: int, source: AudioSource) -> bool:
@@ -223,7 +225,7 @@ class PerTrackAudioRouter(QObject):
             self._update_manager_references()
         
         if not self.audio_manager:
-            print("No audio manager available for internal FluidSynth")
+            self.logger.debug("No audio manager available for internal FluidSynth")
             return False
         
         # Create track instance that uses the global audio manager
@@ -233,7 +235,7 @@ class PerTrackAudioRouter(QObject):
         )
         
         self.track_instances[track_index] = instance
-        print(f"Internal FluidSynth assigned to track {track_index}")
+        self.logger.debug(f"Internal FluidSynth assigned to track {track_index}")
         return True
     
     def play_note(self, track_index: int, note: MidiNote) -> bool:
@@ -248,20 +250,20 @@ class PerTrackAudioRouter(QObject):
                 return False
         
         try:
-            print(f"PerTrackRouter: Playing note {note.pitch} on track {track_index}, source type: {instance.source.source_type}")
+            self.logger.debug(f"PerTrackRouter: Playing note {note.pitch} on track {track_index}, source type: {instance.source.source_type}")
             
             if instance.source.source_type == AudioSourceType.SOUNDFONT:
-                print(f"PerTrackRouter: Using soundfont audio for track {track_index}")
+                self.logger.debug(f"PerTrackRouter: Using soundfont audio for track {track_index}")
                 return self._play_soundfont_note(instance, note)
             elif instance.source.source_type == AudioSourceType.EXTERNAL_MIDI:
-                print(f"PerTrackRouter: Using external MIDI for track {track_index}")
+                self.logger.debug(f"PerTrackRouter: Using external MIDI for track {track_index}")
                 return self._play_external_midi_note(instance, note)
             elif instance.source.source_type == AudioSourceType.INTERNAL_FLUIDSYNTH:
-                print(f"PerTrackRouter: Using internal FluidSynth for track {track_index}")
+                self.logger.debug(f"PerTrackRouter: Using internal FluidSynth for track {track_index}")
                 return self._play_internal_note(instance, note)
             
         except Exception as e:
-            print(f"Error playing note on track {track_index}: {e}")
+            self.logger.debug(f"Error playing note on track {track_index}: {e}")
             return False
         
         return False
@@ -281,7 +283,7 @@ class PerTrackAudioRouter(QObject):
                 return self._stop_internal_note(instance, note)
             
         except Exception as e:
-            print(f"Error stopping note on track {track_index}: {e}")
+            self.logger.debug(f"Error stopping note on track {track_index}: {e}")
             return False
         
         return False
@@ -306,24 +308,24 @@ class PerTrackAudioRouter(QObject):
     
     def _play_external_midi_note(self, instance: TrackAudioInstance, note: MidiNote) -> bool:
         """Play note using external MIDI device via MIDI routing system"""
-        print(f"PerTrackRouter: _play_external_midi_note called for pitch {note.pitch}")
-        print(f"PerTrackRouter: midi_routing_manager available: {self.midi_routing_manager is not None}")
-        print(f"PerTrackRouter: instance.midi_out_port available: {instance.midi_out_port is not None}")
+        self.logger.debug(f"PerTrackRouter: _play_external_midi_note called for pitch {note.pitch}")
+        self.logger.debug(f"PerTrackRouter: midi_routing_manager available: {self.midi_routing_manager is not None}")
+        self.logger.debug(f"PerTrackRouter: instance.midi_out_port available: {instance.midi_out_port is not None}")
         
         if self.midi_routing_manager:
-            print(f"PerTrackRouter: Using MIDI routing system for external MIDI (channel {note.channel}, pitch {note.pitch})")
+            self.logger.debug(f"PerTrackRouter: Using MIDI routing system for external MIDI (channel {note.channel}, pitch {note.pitch})")
             # Use MIDI routing system to respect enable_external_routing setting
             self.midi_routing_manager.play_note(note.channel, note.pitch, note.velocity)
             return True
         elif instance.midi_out_port:
-            print(f"PerTrackRouter: Using direct MIDI output as fallback")
+            self.logger.debug(f"PerTrackRouter: Using direct MIDI output as fallback")
             # Fallback to direct MIDI output if routing not available
             # Create MIDI note on message
             midi_msg = [0x90 | note.channel, note.pitch, note.velocity]
             instance.midi_out_port.send_message(midi_msg)
             return True
         
-        print(f"PerTrackRouter: No MIDI output method available for external MIDI")
+        self.logger.debug(f"PerTrackRouter: No MIDI output method available for external MIDI")
         return False
     
     def _stop_external_midi_note(self, instance: TrackAudioInstance, note: MidiNote) -> bool:
@@ -393,10 +395,10 @@ class PerTrackAudioRouter(QObject):
             # They will be closed in cleanup_all()
             
             del self.track_instances[track_index]
-            print(f"Cleaned up audio for track {track_index}")
+            self.logger.debug(f"Cleaned up audio for track {track_index}")
             
         except Exception as e:
-            print(f"Error cleaning up track {track_index} audio: {e}")
+            self.logger.debug(f"Error cleaning up track {track_index} audio: {e}")
     
     def initialize_all_tracks(self, max_tracks: int = 16):
         """Initialize audio for all tracks"""
@@ -405,7 +407,7 @@ class PerTrackAudioRouter(QObject):
             if self.initialize_track_audio(track_index):
                 success_count += 1
         
-        print(f"Initialized audio for {success_count}/{max_tracks} tracks")
+        self.logger.debug(f"Initialized audio for {success_count}/{max_tracks} tracks")
         return success_count
     
     def cleanup_all(self):
@@ -420,10 +422,10 @@ class PerTrackAudioRouter(QObject):
                 midi_out.close_port()
                 del midi_out
             except Exception as e:
-                print(f"Error closing MIDI port {port_name}: {e}")
+                self.logger.debug(f"Error closing MIDI port {port_name}: {e}")
         
         self.midi_out_ports.clear()
-        print("All per-track audio resources cleaned up")
+        self.logger.debug("All per-track audio resources cleaned up")
     
     def stop_all_notes(self):
         """Stop all notes on all track instances"""
@@ -442,7 +444,7 @@ class PerTrackAudioRouter(QObject):
                                 stopped_count += 1
                             except:
                                 pass
-                        print(f"Sent all-notes-off to track {track_index} soundfont")
+                        self.logger.debug(f"Sent all-notes-off to track {track_index} soundfont")
                 
                 elif instance.source.source_type == AudioSourceType.EXTERNAL_MIDI:
                     # Send all notes off to external MIDI
@@ -455,12 +457,12 @@ class PerTrackAudioRouter(QObject):
                                 stopped_count += 1
                             except:
                                 pass
-                        print(f"Sent all-notes-off to track {track_index} MIDI device")
+                        self.logger.debug(f"Sent all-notes-off to track {track_index} MIDI device")
                 
             except Exception as e:
-                print(f"Error stopping notes on track {track_index}: {e}")
+                self.logger.debug(f"Error stopping notes on track {track_index}: {e}")
         
-        print(f"PerTrackAudioRouter: Sent all-notes-off to {stopped_count} channels")
+        self.logger.debug(f"PerTrackAudioRouter: Sent all-notes-off to {stopped_count} channels")
         return stopped_count > 0
 
 # Global per-track audio router instance
