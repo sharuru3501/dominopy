@@ -158,8 +158,8 @@ class PianoRollWidget(QWidget):
             self._draw_piano_keyboard(painter, height)
 
         # Draw grid (simplified for now)
-        # Horizontal lines for pitches (every MIDI note)
-        for pitch in range(0, 128): # All 128 MIDI pitches
+        # Horizontal lines for pitches (practical range C-1 to C8)
+        for pitch in range(0, 109): # C-1 (0) to C8 (108)
             y = self._pitch_to_y(pitch)
             if pitch % 12 == 0: # C notes (octaves)
                 painter.setPen(QColor("#8be9fd")) # Light blue for C notes
@@ -1369,8 +1369,8 @@ class PianoRollWidget(QWidget):
         # Background for piano area
         painter.fillRect(0, 0, self.piano_width, height, QColor("#1e1e1e"))
         
-        # Draw white keys first
-        for pitch in range(0, 128):
+        # Draw white keys first (practical range)
+        for pitch in range(0, 109):
             note_index = pitch % 12
             if note_index not in black_keys:  # White key
                 y = self._pitch_to_y(pitch)
@@ -1394,8 +1394,8 @@ class PianoRollWidget(QWidget):
                     painter.setPen(QColor("#282a36"))
                     painter.drawText(5, int(y + key_height - 3), f"C{octave}")
         
-        # Draw black keys on top
-        for pitch in range(0, 128):
+        # Draw black keys on top (practical range)
+        for pitch in range(0, 109):
             note_index = pitch % 12
             if note_index in black_keys:  # Black key
                 y = self._pitch_to_y(pitch)
