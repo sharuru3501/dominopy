@@ -169,17 +169,52 @@ class PianoRollWidget(QWidget):
 
         # Vertical lines for beats and measures
         ticks_per_beat = self.midi_project.ticks_per_beat if self.midi_project else 480
-        ticks_per_measure = ticks_per_beat * 4  # Assuming 4/4 time signature
         
-        # Draw measure lines (1 measure intervals)
+        # Get current time signature (dynamic calculation)
+        if self.midi_project:
+            numerator, denominator = self.midi_project.get_current_time_signature()
+        else:
+            numerator, denominator = 4, 4  # Default 4/4
+        
+        # Calculate ticks per measure based on actual time signature
+        # For 3/4: 3 beats per measure
+        # For 6/8: 6 eighth notes = 3 quarter note beats per measure  
+        # For 4/4: 4 beats per measure
+        if denominator == 8:
+            # For compound time (6/8, 9/8, 12/8), group eighth notes
+            beats_per_measure = numerator / 2  # 6/8 = 3 beats, 9/8 = 4.5 beats
+            ticks_per_measure = int(ticks_per_beat * beats_per_measure)
+        else:
+            # For simple time (4/4, 3/4, 2/4, 5/4)
+            beats_per_measure = numerator * (4 / denominator)  # Normalize to quarter note beats
+            ticks_per_measure = int(ticks_per_beat * beats_per_measure)
+        
+        print(f"DEBUG: Time signature {numerator}/{denominator}, ticks_per_measure={ticks_per_measure}")
+        
+        # Draw measure lines with measure numbers
+        painter.setFont(QFont("Arial", 8))
+        measure_number = 1
         for tick in range(0, self.visible_end_tick + ticks_per_measure, ticks_per_measure):
             if tick >= self.visible_start_tick:
                 x = self._tick_to_x(tick) + grid_start_x
+                # Draw measure line
                 painter.setPen(QColor("#ff79c6"))  # Pink/magenta for measures
                 painter.drawLine(int(x), 0, int(x), height)
+                
+                # Draw measure number at top
+                painter.setPen(QColor("#f8f8f2"))  # White text
+                painter.drawText(int(x) + 2, 12, str(measure_number))
+                measure_number += 1
         
-        # Draw beat lines (lighter, every beat)
-        for tick in range(0, self.visible_end_tick + ticks_per_beat, ticks_per_beat):
+        # Draw beat lines (lighter, subdivision within measures)
+        if denominator == 8:
+            # For compound time, draw every eighth note
+            ticks_per_subdivision = ticks_per_beat // 2  # Eighth note
+        else:
+            # For simple time, draw every quarter note beat
+            ticks_per_subdivision = ticks_per_beat
+            
+        for tick in range(0, self.visible_end_tick + ticks_per_subdivision, ticks_per_subdivision):
             if tick >= self.visible_start_tick and tick % ticks_per_measure != 0:  # Skip measure lines
                 x = self._tick_to_x(tick) + grid_start_x
                 painter.setPen(QColor("#3e4452"))  # Lighter for beats

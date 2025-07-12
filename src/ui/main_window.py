@@ -848,6 +848,8 @@ class PyDominoMainWindow(QMainWindow):
         # Update the current project
         if hasattr(self.piano_roll, 'midi_project') and self.piano_roll.midi_project:
             self.piano_roll.midi_project.set_global_time_signature(numerator, denominator)
+            # Force piano roll to redraw with new time signature
+            self.piano_roll.update()
         
         print(f"Time signature changed to {numerator}/{denominator}")
     
