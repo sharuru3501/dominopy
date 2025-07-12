@@ -166,7 +166,26 @@ class PerTrackAudioRouter(QObject):
                 for i, port_name in enumerate(available_ports):
                     port_name_str = str(port_name)
                     print(f"PerTrackRouter: Checking port {i}: '{port_name_str}' contains '{source.midi_port_name}'?")
-                    if source.midi_port_name in port_name_str:
+                    
+                    # Handle encoding issues on macOS for IAC Driver ports
+                    if "IAC" in port_name_str and "IAC Driver Bus" in source.midi_port_name:
+                        # Extract bus number from corrupted name
+                        # 'IAC„Éâ„É©„Ç§„Éê „Éê„Çπ1' -> extract '1'
+                        bus_chars = []
+                        for char in port_name_str:
+                            if char.isdigit():
+                                bus_chars.append(char)
+                        
+                        if bus_chars:
+                            detected_bus = ''.join(bus_chars)
+                            expected_bus = source.midi_port_name.split()[-1]  # Extract number from "IAC Driver Bus 1"
+                            print(f"PerTrackRouter: IAC port detected - bus number: {detected_bus}, expected: {expected_bus}")
+                            
+                            if detected_bus == expected_bus:
+                                port_index = i
+                                print(f"PerTrackRouter: Found matching IAC Driver Bus {detected_bus} at index {i}")
+                                break
+                    elif source.midi_port_name in port_name_str:
                         port_index = i
                         print(f"PerTrackRouter: Found matching port at index {i}")
                         break
