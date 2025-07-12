@@ -160,13 +160,20 @@ class PerTrackAudioRouter(QObject):
                 available_ports = midi_out.get_ports()
                 port_index = -1
                 
+                print(f"PerTrackRouter: Looking for MIDI port: '{source.midi_port_name}'")
+                print(f"PerTrackRouter: Available ports: {[str(p) for p in available_ports]}")
+                
                 for i, port_name in enumerate(available_ports):
-                    if source.midi_port_name in str(port_name):
+                    port_name_str = str(port_name)
+                    print(f"PerTrackRouter: Checking port {i}: '{port_name_str}' contains '{source.midi_port_name}'?")
+                    if source.midi_port_name in port_name_str:
                         port_index = i
+                        print(f"PerTrackRouter: Found matching port at index {i}")
                         break
                 
                 if port_index == -1:
                     print(f"MIDI port not found: {source.midi_port_name}")
+                    print(f"Available port names: {[str(p) for p in available_ports]}")
                     midi_out.close_port()
                     del midi_out
                     return False
