@@ -62,10 +62,10 @@ class PyDominoMainWindow(QMainWindow):
         h_layout.setSpacing(0)  # Remove spacing
         h_layout.addWidget(self.piano_roll)
         
-        # Vertical scrollbar (C-1 to C8 for keyswitch + orchestral range)
+        # Vertical scrollbar (C-1 to B9 extended range)
         self.v_scrollbar = QScrollBar(Qt.Vertical)
         self.v_scrollbar.setMinimum(0)   # C-1 (MIDI note 0) - for keyswitches
-        self.v_scrollbar.setMaximum(96)  # Allow scrolling to show C8 (MIDI 108 - 12 visible notes)
+        self.v_scrollbar.setMaximum(107) # Allow scrolling to show B9 (MIDI 119 - 12 visible notes)
         self.v_scrollbar.setValue(60)    # Start around middle C (C4)
         self.v_scrollbar.valueChanged.connect(self._on_vertical_scroll)
         h_layout.addWidget(self.v_scrollbar)

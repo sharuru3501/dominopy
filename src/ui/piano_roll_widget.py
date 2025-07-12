@@ -158,8 +158,8 @@ class PianoRollWidget(QWidget):
             self._draw_piano_keyboard(painter, height)
 
         # Draw grid (simplified for now)
-        # Horizontal lines for pitches (practical range C-1 to C8)
-        for pitch in range(0, 109): # C-1 (0) to C8 (108)
+        # Horizontal lines for pitches (extended range C-1 to B9)
+        for pitch in range(0, 120): # C-1 (0) to B9 (119)
             y = self._pitch_to_y(pitch)
             if pitch % 12 == 0: # C notes (octaves)
                 painter.setPen(QColor("#8be9fd")) # Light blue for C notes
@@ -283,8 +283,8 @@ class PianoRollWidget(QWidget):
         # y = height - ((pitch + 1) * pixels_per_pitch) + vertical_offset
         # pitch = ((height - y + vertical_offset) / pixels_per_pitch) - 1
         pitch = int((self.height() - y + self.vertical_offset) / self.pixels_per_pitch)
-        # Clamp pitch to practical range
-        return max(0, min(108, pitch))
+        # Clamp pitch to extended range (C-1 to B9)
+        return max(0, min(119, pitch))
 
     def mousePressEvent(self, event):
         # Ensure this widget has focus for keyboard events
@@ -488,7 +488,7 @@ class PianoRollWidget(QWidget):
         elif event.key() == Qt.Key_Up:
             # Vertical scroll up (show higher pitches)
             self.vertical_offset += 50
-            max_offset = 108 * self.pixels_per_pitch - self.height()
+            max_offset = 119 * self.pixels_per_pitch - self.height()
             self.vertical_offset = min(max_offset, self.vertical_offset)
             self.update()
         
@@ -605,7 +605,7 @@ class PianoRollWidget(QWidget):
                 scroll_amount = scroll_y / 120 * 30  # Convert to reasonable scroll amount
                 self.vertical_offset += scroll_amount
                 # Limit vertical scroll range
-                max_offset = 108 * self.pixels_per_pitch - self.height()
+                max_offset = 119 * self.pixels_per_pitch - self.height()
                 min_offset = 0  # Don't scroll below C-1 (MIDI 0)
                 self.vertical_offset = max(min_offset, min(max_offset, self.vertical_offset))
                 self.update()
@@ -1369,8 +1369,8 @@ class PianoRollWidget(QWidget):
         # Background for piano area
         painter.fillRect(0, 0, self.piano_width, height, QColor("#1e1e1e"))
         
-        # Draw white keys first (practical range)
-        for pitch in range(0, 109):
+        # Draw white keys first (extended range)
+        for pitch in range(0, 120):
             note_index = pitch % 12
             if note_index not in black_keys:  # White key
                 y = self._pitch_to_y(pitch)
@@ -1394,8 +1394,8 @@ class PianoRollWidget(QWidget):
                     painter.setPen(QColor("#282a36"))
                     painter.drawText(5, int(y + key_height - 3), f"C{octave}")
         
-        # Draw black keys on top (practical range)
-        for pitch in range(0, 109):
+        # Draw black keys on top (extended range)
+        for pitch in range(0, 120):
             note_index = pitch % 12
             if note_index in black_keys:  # Black key
                 y = self._pitch_to_y(pitch)
