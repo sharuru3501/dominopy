@@ -14,7 +14,7 @@ class MeasureBarWidget(QWidget):
     
     def __init__(self):
         super().__init__()
-        self.setFixedHeight(30)  # Fixed height for measure bar
+        self.setFixedHeight(22)  # Fixed height for measure bar
         self.setMinimumWidth(800)
         
         # Piano roll synchronization
@@ -89,13 +89,17 @@ class MeasureBarWidget(QWidget):
         font.setBold(True)
         painter.setFont(font)
         
-        # Draw measure numbers aligned with pink measure lines
+        # Draw measure lines and numbers
         measure_number = 1
         for tick in range(0, self.visible_end_tick + ticks_per_measure, ticks_per_measure):
             if tick >= self.visible_start_tick:
                 x = self._tick_to_x(tick) + self.grid_start_x
                 
-                # Draw measure number directly at the pink measure line position
+                # Draw black vertical measure line
+                painter.setPen(QColor("#000000"))  # Black line
+                painter.drawLine(int(x), 0, int(x), self.height())
+                
+                # Draw measure number
                 painter.setPen(QColor("#000000"))  # Black text
                 text_rect = painter.fontMetrics().boundingRect(str(measure_number))
                 
