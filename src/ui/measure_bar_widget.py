@@ -61,9 +61,9 @@ class MeasureBarWidget(QWidget):
         # Clear background (match track list)
         painter.fillRect(self.rect(), QColor("#F5F5F5"))
         
-        # Draw piano keyboard area (to match piano roll)
-        painter.fillRect(0, 0, self.piano_width, self.height(), QColor("#1e1e1e"))
-        painter.setPen(QColor("#44475a"))
+        # Draw piano keyboard area (match background color)
+        painter.fillRect(0, 0, self.piano_width, self.height(), QColor("#F5F5F5"))
+        painter.setPen(QColor("#CCCCCC"))
         painter.drawLine(self.piano_width - 1, 0, self.piano_width - 1, self.height())
         
         # Get time signature information
