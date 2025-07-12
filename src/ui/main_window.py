@@ -606,12 +606,8 @@ class PyDominoMainWindow(QMainWindow):
                     print(f"Virtual keyboard: Playing pitch {pitch} on track {active_track_index}")
                     return
         
-        # Fallback to default audio manager
-        from src.audio_system import get_audio_manager
-        audio_manager = get_audio_manager()
-        if audio_manager:
-            audio_manager.play_note_preview(pitch, velocity)
-            print(f"Virtual keyboard: Playing pitch {pitch} (fallback)")
+        # No per-track routing available - respect MIDI routing settings
+        print(f"Virtual keyboard: No per-track routing available for pitch {pitch}")
     
     def _on_virtual_key_released(self, pitch: int):
         """Handle virtual keyboard key release"""
@@ -641,12 +637,8 @@ class PyDominoMainWindow(QMainWindow):
                     print(f"Virtual keyboard: Stopped pitch {pitch} on track {active_track_index}")
                     return
         
-        # Fallback to default audio manager
-        from src.audio_system import get_audio_manager
-        audio_manager = get_audio_manager()
-        if audio_manager:
-            audio_manager.stop_note_immediate(pitch)
-            print(f"Virtual keyboard: Stopped pitch {pitch} (fallback)")
+        # No per-track routing available - respect MIDI routing settings
+        print(f"Virtual keyboard: No per-track routing available to stop pitch {pitch}")
     
     def _update_virtual_keyboard_track_info(self):
         """Update virtual keyboard with current track information"""

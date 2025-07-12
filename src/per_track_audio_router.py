@@ -274,24 +274,32 @@ class PerTrackAudioRouter(QObject):
         return True
     
     def _play_external_midi_note(self, instance: TrackAudioInstance, note: MidiNote) -> bool:
-        """Play note using external MIDI device"""
-        if not instance.midi_out_port:
-            return False
-        
-        # Create MIDI note on message
-        midi_msg = [0x90 | note.channel, note.pitch, note.velocity]
-        instance.midi_out_port.send_message(midi_msg)
-        return True
+        """Play note using external MIDI device via MIDI routing system"""
+        if self.midi_routing_manager:
+            # Use MIDI routing system to respect enable_external_routing setting
+            self.midi_routing_manager.play_note(note.channel, note.pitch, note.velocity)
+            return True
+        elif instance.midi_out_port:
+            # Fallback to direct MIDI output if routing not available
+            # Create MIDI note on message
+            midi_msg = [0x90 | note.channel, note.pitch, note.velocity]
+            instance.midi_out_port.send_message(midi_msg)
+            return True
+        return False
     
     def _stop_external_midi_note(self, instance: TrackAudioInstance, note: MidiNote) -> bool:
-        """Stop note using external MIDI device"""
-        if not instance.midi_out_port:
-            return False
-        
-        # Create MIDI note off message
-        midi_msg = [0x80 | note.channel, note.pitch, 0]
-        instance.midi_out_port.send_message(midi_msg)
-        return True
+        """Stop note using external MIDI device via MIDI routing system"""
+        if self.midi_routing_manager:
+            # Use MIDI routing system to respect enable_external_routing setting
+            self.midi_routing_manager.stop_note(note.channel, note.pitch)
+            return True
+        elif instance.midi_out_port:
+            # Fallback to direct MIDI output if routing not available
+            # Create MIDI note off message
+            midi_msg = [0x80 | note.channel, note.pitch, 0]
+            instance.midi_out_port.send_message(midi_msg)
+            return True
+        return False
     
     def _play_internal_note(self, instance: TrackAudioInstance, note: MidiNote) -> bool:
         """Play note using internal FluidSynth via MIDI routing system"""
