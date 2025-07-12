@@ -27,11 +27,11 @@ class MeasureBarWidget(QWidget):
         # MIDI project reference
         self.midi_project: Optional[MidiProject] = None
         
-        # Styling (match grid cell area - lighter gray)
+        # Styling (match track list background)
         self.setStyleSheet("""
             MeasureBarWidget {
-                background-color: #3c3f41;
-                border-bottom: 1px solid #44475a;
+                background-color: #F5F5F5;
+                border-bottom: 1px solid #CCCCCC;
             }
         """)
     
@@ -58,8 +58,8 @@ class MeasureBarWidget(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         
-        # Clear background (match grid cell area)
-        painter.fillRect(self.rect(), QColor("#3c3f41"))
+        # Clear background (match track list)
+        painter.fillRect(self.rect(), QColor("#F5F5F5"))
         
         # Draw piano keyboard area (to match piano roll)
         painter.fillRect(0, 0, self.piano_width, self.height(), QColor("#1e1e1e"))
