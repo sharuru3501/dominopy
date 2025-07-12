@@ -588,10 +588,21 @@ class PyDominoMainWindow(QMainWindow):
         track_manager = get_track_manager()
         if track_manager:
             active_track_index = track_manager.get_active_track_index()
+            print(f"Virtual keyboard: Active track index: {active_track_index}")
             
             # Try per-track audio routing
             per_track_router = get_per_track_audio_router()
             if per_track_router:
+                # Check track audio source
+                from src.audio_source_manager import get_audio_source_manager
+                audio_source_manager = get_audio_source_manager()
+                if audio_source_manager:
+                    track_source = audio_source_manager.get_track_source(active_track_index)
+                    if track_source:
+                        print(f"Virtual keyboard: Track {active_track_index} source: {track_source.name} (type: {track_source.source_type})")
+                    else:
+                        print(f"Virtual keyboard: No audio source assigned to track {active_track_index}")
+                
                 # Create a note for the virtual keyboard
                 virtual_note = MidiNote(
                     pitch=pitch,
@@ -601,7 +612,9 @@ class PyDominoMainWindow(QMainWindow):
                     channel=active_track_index % 16
                 )
                 
+                print(f"Virtual keyboard: Calling per_track_router.play_note({active_track_index}, pitch={pitch})")
                 success = per_track_router.play_note(active_track_index, virtual_note)
+                print(f"Virtual keyboard: per_track_router.play_note returned: {success}")
                 if success:
                     print(f"Virtual keyboard: Playing pitch {pitch} on track {active_track_index}")
                     return

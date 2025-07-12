@@ -222,11 +222,16 @@ class PerTrackAudioRouter(QObject):
                 return False
         
         try:
+            print(f"PerTrackRouter: Playing note {note.pitch} on track {track_index}, source type: {instance.source.source_type}")
+            
             if instance.source.source_type == AudioSourceType.SOUNDFONT:
+                print(f"PerTrackRouter: Using soundfont audio for track {track_index}")
                 return self._play_soundfont_note(instance, note)
             elif instance.source.source_type == AudioSourceType.EXTERNAL_MIDI:
+                print(f"PerTrackRouter: Using external MIDI for track {track_index}")
                 return self._play_external_midi_note(instance, note)
             elif instance.source.source_type == AudioSourceType.INTERNAL_FLUIDSYNTH:
+                print(f"PerTrackRouter: Using internal FluidSynth for track {track_index}")
                 return self._play_internal_note(instance, note)
             
         except Exception as e:
@@ -275,16 +280,24 @@ class PerTrackAudioRouter(QObject):
     
     def _play_external_midi_note(self, instance: TrackAudioInstance, note: MidiNote) -> bool:
         """Play note using external MIDI device via MIDI routing system"""
+        print(f"PerTrackRouter: _play_external_midi_note called for pitch {note.pitch}")
+        print(f"PerTrackRouter: midi_routing_manager available: {self.midi_routing_manager is not None}")
+        print(f"PerTrackRouter: instance.midi_out_port available: {instance.midi_out_port is not None}")
+        
         if self.midi_routing_manager:
+            print(f"PerTrackRouter: Using MIDI routing system for external MIDI (channel {note.channel}, pitch {note.pitch})")
             # Use MIDI routing system to respect enable_external_routing setting
             self.midi_routing_manager.play_note(note.channel, note.pitch, note.velocity)
             return True
         elif instance.midi_out_port:
+            print(f"PerTrackRouter: Using direct MIDI output as fallback")
             # Fallback to direct MIDI output if routing not available
             # Create MIDI note on message
             midi_msg = [0x90 | note.channel, note.pitch, note.velocity]
             instance.midi_out_port.send_message(midi_msg)
             return True
+        
+        print(f"PerTrackRouter: No MIDI output method available for external MIDI")
         return False
     
     def _stop_external_midi_note(self, instance: TrackAudioInstance, note: MidiNote) -> bool:
