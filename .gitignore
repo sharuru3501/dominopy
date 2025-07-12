@@ -68,3 +68,11 @@ docs/CRASH_FIXES.md
 docs/DEVELOPMENT_PLAN.md
 docs/PASTE_TROUBLESHOOTING.md
 CRASH_FIXES.md
+
+# Soundfonts - large files excluded from repository
+# Users should download/install their preferred soundfonts separately
+*.sf2
+soundfonts/*.sf2
+soundfonts/MuseScore_General.sf2
+soundfonts/Hiyameshi-DMG-STD.sf2
+soundfonts/default.sf2
