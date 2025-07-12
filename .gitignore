@@ -52,3 +52,19 @@ debug_*.py
 
 # Claude artifacts
 .claude/
+
+# Development and debugging files (keep locally, exclude from repo)
+check_*.py
+investigate_*.py
+optimize_*.py
+fix_*.py
+simple_*.py
+trace_*.py
+multi_track_implementation_plan.md
+
+# Development docs (internal use only)
+docs/REQUIREMENTS.md
+docs/CRASH_FIXES.md
+docs/DEVELOPMENT_PLAN.md
+docs/PASTE_TROUBLESHOOTING.md
+CRASH_FIXES.md
