@@ -1,6 +1,6 @@
 
 from PySide6.QtWidgets import (QMainWindow, QFileDialog, QWidget, QHBoxLayout, QToolBar, 
-                              QScrollArea, QVBoxLayout, QScrollBar, QDockWidget, QMessageBox)
+                              QScrollArea, QVBoxLayout, QScrollBar, QDockWidget, QMessageBox, QDialog)
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtCore import Qt, QTimer
 from src.ui.piano_roll_widget import PianoRollWidget
@@ -557,7 +557,7 @@ class PyDominoMainWindow(QMainWindow):
             dialog = MIDIOutputDialog(self)
             result = dialog.exec()
             
-            if result == dialog.Accepted:
+            if result == QDialog.Accepted:
                 print("MIDI output settings updated")
             
         except Exception as e:
