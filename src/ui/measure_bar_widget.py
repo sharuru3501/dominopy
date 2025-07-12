@@ -30,8 +30,8 @@ class MeasureBarWidget(QWidget):
         # Styling
         self.setStyleSheet("""
             MeasureBarWidget {
-                background-color: #44475a;
-                border-bottom: 1px solid #6272a4;
+                background-color: #282c34;
+                border-bottom: 1px solid #44475a;
             }
         """)
     
@@ -58,12 +58,12 @@ class MeasureBarWidget(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         
-        # Clear background
-        painter.fillRect(self.rect(), QColor("#44475a"))
+        # Clear background (match piano roll)
+        painter.fillRect(self.rect(), QColor("#282c34"))
         
         # Draw piano keyboard area (to match piano roll)
         painter.fillRect(0, 0, self.piano_width, self.height(), QColor("#1e1e1e"))
-        painter.setPen(QColor("#6272a4"))
+        painter.setPen(QColor("#44475a"))
         painter.drawLine(self.piano_width - 1, 0, self.piano_width - 1, self.height())
         
         # Get time signature information
@@ -100,7 +100,7 @@ class MeasureBarWidget(QWidget):
                 painter.drawLine(int(x), 0, int(x), self.height())
                 
                 # Draw measure number
-                painter.setPen(QColor("#000000"))  # Black text
+                painter.setPen(QColor("#f8f8f2"))  # White text
                 text_rect = painter.fontMetrics().boundingRect(str(measure_number))
                 
                 # Center text in measure
