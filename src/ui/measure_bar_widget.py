@@ -51,7 +51,7 @@ class MeasureBarWidget(QWidget):
     
     def _tick_to_x(self, tick: int) -> float:
         """Convert MIDI tick to X coordinate (same as piano roll)"""
-        return tick * self.grid_width_pixels
+        return (tick - self.visible_start_tick) * self.grid_width_pixels
     
     def paintEvent(self, event):
         """Draw measure numbers in horizontal bar"""
@@ -93,6 +93,11 @@ class MeasureBarWidget(QWidget):
         # Calculate the range of measures to draw, ensuring we cover the visible area
         start_measure_tick = (self.visible_start_tick // ticks_per_measure) * ticks_per_measure
         end_tick = self.visible_end_tick + ticks_per_measure
+        
+        # Debug information (can be removed later)
+        # print(f"DEBUG MeasureBar: visible_start_tick={self.visible_start_tick}, visible_end_tick={self.visible_end_tick}")
+        # print(f"DEBUG MeasureBar: ticks_per_measure={ticks_per_measure}, start_measure_tick={start_measure_tick}, end_tick={end_tick}")
+        # print(f"DEBUG MeasureBar: widget width={self.width()}, grid_start_x={self.grid_start_x}")
         
         for tick in range(start_measure_tick, end_tick, ticks_per_measure):
             # Calculate the actual measure number (1-based)

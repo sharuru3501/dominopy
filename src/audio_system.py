@@ -68,14 +68,17 @@ class FluidSynthAudio(QObject):
             return False
         
         try:
-            # Create FluidSynth instance
+            # Create FluidSynth instance with minimal gain initially
             self.fs = fluidsynth.Synth(
                 samplerate=self.settings.sample_rate,
-                gain=self.settings.gain
+                gain=0.1  # Start with very low gain to minimize startup pops
             )
             
             # Start audio driver
             self.fs.start()
+            
+            # Brief delay to let audio system stabilize and prevent startup pops
+            time.sleep(0.1)
             
             # Load soundfont
             soundfont_path = self._find_soundfont()
@@ -84,6 +87,10 @@ class FluidSynthAudio(QObject):
                 if self.sfid != -1:
                     # Select bank 0 and program 0 (General MIDI)
                     self.fs.program_select(0, self.sfid, 0, 0)
+                    
+                    # Now set the proper gain after initialization is complete
+                    self.fs.set_gain(self.settings.gain)
+                    
                     self.is_initialized = True
                     self.audio_ready.emit()
                     print(f"Audio initialized with soundfont: {soundfont_path}")
