@@ -120,16 +120,41 @@ class PianoRollWidget(QWidget):
                 for note in track.notes:
                     if note.end_tick > max_tick:
                         max_tick = note.end_tick
-            # Add some padding (e.g., 4 beats) to the end
-            padding_ticks = self.midi_project.ticks_per_beat * 4
+            
+            # Add generous padding for composition (8 measures)
+            padding_ticks = self.midi_project.ticks_per_beat * 32  # 8 measures in 4/4
             self.visible_end_tick = max_tick + padding_ticks
-            # Ensure a minimum visible length, e.g., 32 beats  
-            min_visible_ticks = self.midi_project.ticks_per_beat * 32
+            
+            # Ensure a substantial minimum length for composition (64 measures)
+            min_visible_ticks = self.midi_project.ticks_per_beat * 256  # 64 measures in 4/4
             if self.visible_end_tick < min_visible_ticks:
                 self.visible_end_tick = min_visible_ticks
         else:
-            self.visible_end_tick = 480 * 32 # Default to 32 beats if no project
+            # Default to 64 measures for empty project
+            self.visible_end_tick = 480 * 256  # 64 measures at standard resolution
         self.update() # Request a repaint
+        
+        # Update main window scrollbar if available
+        self._update_scrollbar_range()
+
+    def _update_scrollbar_range(self):
+        """Update the main window's horizontal scrollbar range"""
+        if hasattr(self, 'h_scrollbar') and self.h_scrollbar:
+            self.h_scrollbar.setMaximum(self.visible_end_tick)
+
+    def extend_range_if_needed(self, tick: int):
+        """Extend the visible range if the given tick is near the end"""
+        # If the tick is within 4 measures of the end, extend by 8 measures
+        ticks_per_beat = self.midi_project.ticks_per_beat if self.midi_project else 480
+        buffer_zone = ticks_per_beat * 16  # 4 measures buffer
+        extension_size = ticks_per_beat * 32  # 8 measures extension
+        
+        if tick >= self.visible_end_tick - buffer_zone:
+            old_end = self.visible_end_tick
+            self.visible_end_tick = tick + extension_size
+            print(f"Extended horizontal range from {old_end} to {self.visible_end_tick} ticks")
+            self._update_scrollbar_range()
+            self.update()
 
     def update_display_settings(self):
         """Update display settings and refresh"""
@@ -717,6 +742,11 @@ class PianoRollWidget(QWidget):
             command = PasteNotesCommand(self.midi_project.tracks[0], notes_to_paste)
             self.command_history.execute_command(command)
             
+            # Check if we need to extend range for pasted notes
+            if notes_to_paste:
+                max_end_tick = max(note.end_tick for note in notes_to_paste)
+                self.extend_range_if_needed(max_end_tick)
+            
             # Update playback engine after pasting
             self._update_playback_engine()
             
@@ -880,6 +910,9 @@ class PianoRollWidget(QWidget):
                     # Fallback to first track
                     command = AddNoteCommand(self.midi_project.tracks[0], new_note)
                     self.command_history.execute_command(command)
+                
+                # Check if we need to extend the horizontal range
+                self.extend_range_if_needed(new_note.end_tick)
                 
                 # Update playback engine with new note
                 self._update_playback_engine()

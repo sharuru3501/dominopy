@@ -823,12 +823,16 @@ class PyDominoMainWindow(QMainWindow):
         """Handle horizontal scrollbar changes"""
         # Convert scrollbar value to horizontal offset in ticks
         self.piano_roll.visible_start_tick = value
-        self.piano_roll.update()
         
         # Calculate visible end tick based on current window width
         grid_start_x = self.piano_roll.piano_width if self.piano_roll.show_piano_keyboard else 0
         visible_width = self.piano_roll.width() - grid_start_x
         visible_end_tick = self.piano_roll.visible_start_tick + int(visible_width / self.piano_roll.pixels_per_tick)
+        
+        # Check if we need to extend range when scrolling near the end
+        self.piano_roll.extend_range_if_needed(visible_end_tick)
+        
+        self.piano_roll.update()
         
         # Synchronize measure bar with piano roll scrolling
         self.measure_bar.sync_with_piano_roll(
