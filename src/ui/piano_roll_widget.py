@@ -191,12 +191,21 @@ class PianoRollWidget(QWidget):
         
         
         # Draw measure lines (numbers now handled by separate measure bar)
-        for tick in range(0, self.visible_end_tick + ticks_per_measure, ticks_per_measure):
-            if tick >= self.visible_start_tick:
+        # Calculate the range of measures to draw based on visible area
+        grid_width = self.width() - grid_start_x
+        current_visible_end_tick = self.visible_start_tick + int(grid_width / self.pixels_per_tick)
+        
+        # Start from the measure that contains or precedes visible_start_tick
+        start_measure_tick = (self.visible_start_tick // ticks_per_measure) * ticks_per_measure
+        end_tick = current_visible_end_tick + ticks_per_measure  # Add padding
+        
+        for tick in range(start_measure_tick, end_tick, ticks_per_measure):
+            if tick >= self.visible_start_tick - ticks_per_measure:  # Include partially visible measures
                 x = self._tick_to_x(tick) + grid_start_x
-                # Draw measure line
-                painter.setPen(QColor("#ff79c6"))  # Pink/magenta for measures
-                painter.drawLine(int(x), 0, int(x), height)
+                if x >= grid_start_x and x <= self.width():  # Only draw if visible
+                    # Draw measure line
+                    painter.setPen(QColor("#ff79c6"))  # Pink/magenta for measures
+                    painter.drawLine(int(x), 0, int(x), height)
         
         # Draw beat lines (lighter, subdivision within measures)
         if denominator == 8:
@@ -205,12 +214,16 @@ class PianoRollWidget(QWidget):
         else:
             # For simple time, draw every quarter note beat
             ticks_per_subdivision = ticks_per_beat
-            
-        for tick in range(0, self.visible_end_tick + ticks_per_subdivision, ticks_per_subdivision):
-            if tick >= self.visible_start_tick and tick % ticks_per_measure != 0:  # Skip measure lines
+        
+        # Use the same range calculation as measure lines
+        start_beat_tick = (self.visible_start_tick // ticks_per_subdivision) * ticks_per_subdivision
+        
+        for tick in range(start_beat_tick, end_tick, ticks_per_subdivision):
+            if tick >= self.visible_start_tick - ticks_per_subdivision and tick % ticks_per_measure != 0:  # Skip measure lines
                 x = self._tick_to_x(tick) + grid_start_x
-                painter.setPen(QColor("#3e4452"))  # Lighter for beats
-                painter.drawLine(int(x), 0, int(x), height)
+                if x >= grid_start_x and x <= self.width():  # Only draw if visible
+                    painter.setPen(QColor("#3e4452"))  # Lighter for beats
+                    painter.drawLine(int(x), 0, int(x), height)
 
         # Draw MIDI notes
         if self.midi_project:
