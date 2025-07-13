@@ -9,7 +9,7 @@ from src.logger import get_logger
 from src.ui.compact_tempo_widget import (CompactTempoWidget, CompactTimeSignatureWidget, 
                                        CompactMusicInfoWidget, CompactPlaybackInfoWidget, 
                                        ToolbarSeparator)
-from src.midi_parser import load_midi_file
+from src.midi_parser import load_midi_file, save_midi_file
 from src.edit_modes import EditMode
 from src.audio_system import initialize_audio_manager, cleanup_audio_manager, AudioSettings
 from src.playback_engine import initialize_playback_engine, cleanup_playback_engine, get_playback_engine, PlaybackState
@@ -19,6 +19,8 @@ from src.audio_source_manager import initialize_audio_source_manager, cleanup_au
 from src.per_track_audio_router import initialize_per_track_audio_router, cleanup_per_track_audio_router
 from src.ui.track_list_widget import TrackListWidget
 from src.ui.virtual_keyboard_widget import VirtualKeyboardWidget
+from src.ui.measure_bar_widget import MeasureBarWidget
+from src.ui.grid_subdivision_widget import GridSubdivisionWidget
 
 class PyDominoMainWindow(QMainWindow):
     def __init__(self):
@@ -40,21 +42,34 @@ class PyDominoMainWindow(QMainWindow):
         # Piano Roll Widget with custom scrollbars
         self.piano_roll = PianoRollWidget()
         
+        # Create measure bar widget
+        self.measure_bar = MeasureBarWidget()
+        
         # Create container widget with scrollbars
         piano_roll_container = QWidget()
         piano_roll_layout = QVBoxLayout(piano_roll_container)
         piano_roll_layout.setContentsMargins(0, 0, 0, 0)
+        piano_roll_layout.setSpacing(0)  # Remove spacing between widgets
+        
+        # Add measure bar at the top
+        measure_bar_layout = QHBoxLayout()
+        measure_bar_layout.setContentsMargins(0, 0, 0, 0)
+        measure_bar_layout.setSpacing(0)  # Remove spacing
+        # Add spacer to align with piano roll (account for track list width)
+        measure_bar_layout.addWidget(self.measure_bar)
+        piano_roll_layout.addLayout(measure_bar_layout)
         
         # Horizontal layout for piano roll and vertical scrollbar
         h_layout = QHBoxLayout()
         h_layout.setContentsMargins(0, 0, 0, 0)
+        h_layout.setSpacing(0)  # Remove spacing
         h_layout.addWidget(self.piano_roll)
         
-        # Vertical scrollbar
+        # Vertical scrollbar (C-1 to B9 extended range)
         self.v_scrollbar = QScrollBar(Qt.Vertical)
-        self.v_scrollbar.setMinimum(0)
-        self.v_scrollbar.setMaximum(118)  # 128 notes - 10 visible notes
-        self.v_scrollbar.setValue(0)
+        self.v_scrollbar.setMinimum(0)   # C-1 (MIDI note 0) - for keyswitches
+        self.v_scrollbar.setMaximum(107) # Allow scrolling to show B9 (MIDI 119 - 12 visible notes)
+        self.v_scrollbar.setValue(60)    # Start around middle C (C4)
         self.v_scrollbar.valueChanged.connect(self._on_vertical_scroll)
         h_layout.addWidget(self.v_scrollbar)
         
@@ -93,6 +108,7 @@ class PyDominoMainWindow(QMainWindow):
         QTimer.singleShot(150, self._initialize_playback_engine)
         QTimer.singleShot(175, self._initialize_virtual_keyboard)
         QTimer.singleShot(200, self._connect_ui_signals)
+        QTimer.singleShot(250, self._initial_measure_bar_sync)
 
     def _create_menu_bar(self):
         menu_bar = self.menuBar()
@@ -102,6 +118,16 @@ class PyDominoMainWindow(QMainWindow):
 
         open_action = file_menu.addAction("&Open...")
         open_action.triggered.connect(self._open_midi_file)
+        
+        file_menu.addSeparator()
+        
+        save_action = file_menu.addAction("&Save As...")
+        save_action.setShortcut("Ctrl+S")
+        save_action.triggered.connect(self._save_midi_file)
+        
+        export_action = file_menu.addAction("&Export MIDI...")
+        export_action.setShortcut("Ctrl+E")
+        export_action.triggered.connect(self._export_midi_file)
         
         file_menu.addSeparator()
         
@@ -245,6 +271,38 @@ class PyDominoMainWindow(QMainWindow):
                 except Exception as e:
                     self.logger.info(f"Error loading MIDI file: {e}")
                     # TODO: Show error message to user
+    
+    def _save_midi_file(self):
+        """Save current project as MIDI file"""
+        if not self.piano_roll.midi_project:
+            QMessageBox.warning(self, "No Project", "No project loaded to save.")
+            return
+        
+        file_dialog = QFileDialog(self)
+        file_dialog.setAcceptMode(QFileDialog.AcceptSave)
+        file_dialog.setNameFilter("MIDI Files (*.mid)")
+        file_dialog.setDefaultSuffix("mid")
+        file_dialog.setWindowTitle("Save MIDI File")
+        
+        if file_dialog.exec():
+            selected_files = file_dialog.selectedFiles()
+            if selected_files:
+                file_path = selected_files[0]
+                try:
+                    success = save_midi_file(self.piano_roll.midi_project, file_path)
+                    if success:
+                        self.setWindowTitle(f"PyDomino - {file_path}")
+                        self.status_bar.update_project_name(file_path.split('/')[-1])
+                        self.status_bar.showMessage(f"Project saved as {file_path}", 3000)
+                    else:
+                        QMessageBox.critical(self, "Save Error", f"Failed to save MIDI file to {file_path}")
+                except Exception as e:
+                    print(f"Error saving MIDI file: {e}")
+                    QMessageBox.critical(self, "Save Error", f"Error saving MIDI file: {str(e)}")
+    
+    def _export_midi_file(self):
+        """Export current project as MIDI file (same as save for now)"""
+        self._save_midi_file()
     
     def _undo(self):
         """Undo last operation"""
@@ -768,14 +826,35 @@ class PyDominoMainWindow(QMainWindow):
     
     def _on_vertical_scroll(self, value):
         """Handle vertical scrollbar changes"""
-        # Convert scrollbar value to vertical offset
-        self.piano_roll.vertical_offset = value
+        # Convert scrollbar value (pitch) to vertical offset (pixels)
+        # value represents the lowest visible pitch
+        # We need to convert this to pixel offset
+        self.piano_roll.vertical_offset = value * self.piano_roll.pixels_per_pitch
         self.piano_roll.update()
             
     def _on_horizontal_scroll(self, value):
         """Handle horizontal scrollbar changes"""
         # Convert scrollbar value to horizontal offset in ticks
         self.piano_roll.visible_start_tick = value
+        
+        # Calculate visible end tick based on current window width
+        grid_start_x = self.piano_roll.piano_width if self.piano_roll.show_piano_keyboard else 0
+        visible_width = self.piano_roll.width() - grid_start_x
+        visible_end_tick = self.piano_roll.visible_start_tick + int(visible_width / self.piano_roll.pixels_per_tick)
+        
+        # Check if we need to extend range when scrolling near the end
+        self.piano_roll.extend_range_if_needed(visible_end_tick)
+        
+        # Synchronize measure bar with piano roll scrolling (do this before update)
+        try:
+            self.measure_bar.sync_with_piano_roll(
+                self.piano_roll.visible_start_tick,
+                visible_end_tick,
+                self.piano_roll.pixels_per_tick
+            )
+        except Exception as e:
+            print(f"Warning: Measure bar sync failed: {e}")
+        
         self.piano_roll.update()
             
     def _on_playback_state_changed(self, state: PlaybackState):
@@ -801,13 +880,19 @@ class PyDominoMainWindow(QMainWindow):
         
         music_toolbar.addWidget(ToolbarSeparator())
         
-        # Music info display
+        # Grid subdivision control (moved to music info position)
+        self.grid_subdivision_widget = GridSubdivisionWidget()
+        music_toolbar.addWidget(self.grid_subdivision_widget)
+        
+        music_toolbar.addWidget(ToolbarSeparator())
+        
+        # Consolidated music info display (combines note names and chord info)
         self.music_info_widget = CompactMusicInfoWidget()
         music_toolbar.addWidget(self.music_info_widget)
         
         music_toolbar.addWidget(ToolbarSeparator())
         
-        # Playback info
+        # Playback info (for playback state, time position, etc.)
         self.playback_info_widget = CompactPlaybackInfoWidget()
         music_toolbar.addWidget(self.playback_info_widget)
         
@@ -826,6 +911,20 @@ class PyDominoMainWindow(QMainWindow):
         self.playback_update_timer.timeout.connect(self._update_playback_info)
         self.playback_update_timer.start(100)  # Update every 100ms
     
+    def _initial_measure_bar_sync(self):
+        """Perform initial synchronization of measure bar with piano roll"""
+        # Calculate visible end tick based on current window width
+        grid_start_x = self.piano_roll.piano_width if self.piano_roll.show_piano_keyboard else 0
+        visible_width = self.piano_roll.width() - grid_start_x
+        visible_end_tick = self.piano_roll.visible_start_tick + int(visible_width / self.piano_roll.pixels_per_tick)
+        
+        # Synchronize measure bar with piano roll
+        self.measure_bar.sync_with_piano_roll(
+            self.piano_roll.visible_start_tick,
+            visible_end_tick,
+            self.piano_roll.pixels_per_tick
+        )
+    
     def _connect_ui_signals(self):
         """Connect UI signals after initialization"""
         # Connect tempo widget to project and playback engine
@@ -839,6 +938,9 @@ class PyDominoMainWindow(QMainWindow):
         # Connect piano roll project changes to music info display
         if hasattr(self.piano_roll, 'project_changed'):
             self.piano_roll.project_changed.connect(self.music_info_widget.set_project)
+        
+        # Connect grid subdivision widget to piano roll
+        self.grid_subdivision_widget.subdivision_changed.connect(self._on_grid_subdivision_changed)
         
         # Set initial project in music info widget
         if hasattr(self.piano_roll, 'midi_project') and self.piano_roll.midi_project:
@@ -860,8 +962,18 @@ class PyDominoMainWindow(QMainWindow):
         # Update the current project
         if hasattr(self.piano_roll, 'midi_project') and self.piano_roll.midi_project:
             self.piano_roll.midi_project.set_global_time_signature(numerator, denominator)
+            # Force piano roll to redraw with new time signature
+            self.piano_roll.update()
+            # Update measure bar as well
+            self.measure_bar.update()
         
         self.logger.info(f"Time signature changed to {numerator}/{denominator}")
+    
+    def _on_grid_subdivision_changed(self, subdivision_type: str, ticks_per_subdivision: int):
+        """Handle grid subdivision changes from subdivision widget"""
+        if hasattr(self.piano_roll, 'set_grid_subdivision'):
+            self.piano_roll.set_grid_subdivision(subdivision_type, ticks_per_subdivision)
+        print(f"Grid subdivision changed to {subdivision_type} ({ticks_per_subdivision} ticks)")
     
     def _update_project_ui(self, midi_project):
         """Update UI elements when a new project is loaded"""
@@ -872,6 +984,9 @@ class PyDominoMainWindow(QMainWindow):
             
             self.tempo_widget.set_tempo(tempo)
             self.time_sig_widget.set_time_signature(time_sig[0], time_sig[1])
+            
+            # Update measure bar with new project
+            self.measure_bar.set_midi_project(midi_project)
             
             self.logger.info(f"Updated UI: Tempo={tempo} BPM, Time Signature={time_sig[0]}/{time_sig[1]}")
     
@@ -950,4 +1065,11 @@ class PyDominoMainWindow(QMainWindow):
         self.logger.info("   Track01 (Teal): Long harmony notes")
         self.logger.info("   Track02 (Blue): Accent notes")
         self.logger.info("   Track05 (Purple): Low bass notes")
+    
+    def resizeEvent(self, event):
+        """Handle window resize events to keep measure bar synchronized"""
+        super().resizeEvent(event)
+        
+        # Update measure bar sync after a brief delay to allow layout updates
+        QTimer.singleShot(50, self._initial_measure_bar_sync)
 

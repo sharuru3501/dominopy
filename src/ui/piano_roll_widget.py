@@ -66,6 +66,10 @@ class PianoRollWidget(QWidget):
         # Quantization unit (e.g., 16th note by default)
         self.quantize_grid_ticks = 480 // 4 # Default to 16th note (480 ticks/beat / 4 = 120 ticks)
         
+        # Grid subdivision settings
+        self.grid_subdivision_type = "sixteenth"  # Default subdivision
+        self.ticks_per_subdivision = 120  # Default to 16th note subdivisions
+        
         # Command history for undo/redo
         self.command_history = CommandHistory()
         
@@ -120,16 +124,65 @@ class PianoRollWidget(QWidget):
                 for note in track.notes:
                     if note.end_tick > max_tick:
                         max_tick = note.end_tick
-            # Add some padding (e.g., 4 beats) to the end
-            padding_ticks = self.midi_project.ticks_per_beat * 4
+            
+            # Add generous padding for composition (8 measures)
+            padding_ticks = self.midi_project.ticks_per_beat * 32  # 8 measures in 4/4
             self.visible_end_tick = max_tick + padding_ticks
-            # Ensure a minimum visible length, e.g., 32 beats  
-            min_visible_ticks = self.midi_project.ticks_per_beat * 32
+            
+            # Ensure a substantial minimum length for composition (64 measures)
+            min_visible_ticks = self.midi_project.ticks_per_beat * 256  # 64 measures in 4/4
             if self.visible_end_tick < min_visible_ticks:
                 self.visible_end_tick = min_visible_ticks
         else:
-            self.visible_end_tick = 480 * 32 # Default to 32 beats if no project
+            # Default to 64 measures for empty project
+            self.visible_end_tick = 480 * 256  # 64 measures at standard resolution
         self.update() # Request a repaint
+        
+        # Update main window scrollbar if available
+        self._update_scrollbar_range()
+
+    def _update_scrollbar_range(self):
+        """Update the main window's horizontal scrollbar range"""
+        if hasattr(self, 'h_scrollbar') and self.h_scrollbar:
+            self.h_scrollbar.setMaximum(self.visible_end_tick)
+
+    def extend_range_if_needed(self, tick: int):
+        """Extend the visible range if the given tick is near the end"""
+        # If the tick is within 4 measures of the end, extend by 8 measures
+        ticks_per_beat = self.midi_project.ticks_per_beat if self.midi_project else 480
+        buffer_zone = ticks_per_beat * 16  # 4 measures buffer
+        extension_size = ticks_per_beat * 32  # 8 measures extension
+        
+        if tick >= self.visible_end_tick - buffer_zone:
+            old_end = self.visible_end_tick
+            self.visible_end_tick = tick + extension_size
+            print(f"Extended horizontal range from {old_end} to {self.visible_end_tick} ticks")
+            self._update_scrollbar_range()
+            
+            # Force measure bar resync after range extension
+            self._sync_measure_bar()
+            
+            self.update()
+    
+    def _sync_measure_bar(self):
+        """Synchronize measure bar with current piano roll state"""
+        # Get parent main window to update measure bar
+        main_window = self.parent()
+        while main_window and not hasattr(main_window, 'measure_bar'):
+            main_window = main_window.parent()
+            
+        if main_window and hasattr(main_window, 'measure_bar'):
+            # Calculate current visible end tick
+            grid_start_x = self.piano_width if self.show_piano_keyboard else 0
+            visible_width = self.width() - grid_start_x
+            current_visible_end_tick = self.visible_start_tick + int(visible_width / self.pixels_per_tick)
+            
+            # Update measure bar
+            main_window.measure_bar.sync_with_piano_roll(
+                self.visible_start_tick,
+                current_visible_end_tick,
+                self.pixels_per_tick
+            )
 
     def update_display_settings(self):
         """Update display settings and refresh"""
@@ -158,8 +211,8 @@ class PianoRollWidget(QWidget):
             self._draw_piano_keyboard(painter, height)
 
         # Draw grid (simplified for now)
-        # Horizontal lines for pitches (every MIDI note)
-        for pitch in range(0, 128): # All 128 MIDI pitches
+        # Horizontal lines for pitches (extended range C-1 to B9)
+        for pitch in range(0, 120): # C-1 (0) to B9 (119)
             y = self._pitch_to_y(pitch)
             if pitch % 12 == 0: # C notes (octaves)
                 painter.setPen(QColor("#8be9fd")) # Light blue for C notes
@@ -169,21 +222,83 @@ class PianoRollWidget(QWidget):
 
         # Vertical lines for beats and measures
         ticks_per_beat = self.midi_project.ticks_per_beat if self.midi_project else 480
-        ticks_per_measure = ticks_per_beat * 4  # Assuming 4/4 time signature
         
-        # Draw measure lines (1 measure intervals)
-        for tick in range(0, self.visible_end_tick + ticks_per_measure, ticks_per_measure):
-            if tick >= self.visible_start_tick:
-                x = self._tick_to_x(tick) + grid_start_x
-                painter.setPen(QColor("#ff79c6"))  # Pink/magenta for measures
-                painter.drawLine(int(x), 0, int(x), height)
+        # Get current time signature (dynamic calculation)
+        if self.midi_project:
+            numerator, denominator = self.midi_project.get_current_time_signature()
+        else:
+            numerator, denominator = 4, 4  # Default 4/4
         
-        # Draw beat lines (lighter, every beat)
-        for tick in range(0, self.visible_end_tick + ticks_per_beat, ticks_per_beat):
-            if tick >= self.visible_start_tick and tick % ticks_per_measure != 0:  # Skip measure lines
+        # Calculate ticks per measure based on actual time signature
+        # For 3/4: 3 beats per measure
+        # For 6/8: 6 eighth notes = 3 quarter note beats per measure  
+        # For 4/4: 4 beats per measure
+        if denominator == 8:
+            # For compound time (6/8, 9/8, 12/8), group eighth notes
+            beats_per_measure = numerator / 2  # 6/8 = 3 beats, 9/8 = 4.5 beats
+            ticks_per_measure = int(ticks_per_beat * beats_per_measure)
+        else:
+            # For simple time (4/4, 3/4, 2/4, 5/4)
+            beats_per_measure = numerator * (4 / denominator)  # Normalize to quarter note beats
+            ticks_per_measure = int(ticks_per_beat * beats_per_measure)
+        
+        
+        # Draw measure lines (numbers now handled by separate measure bar)
+        # Calculate the range of measures to draw based on visible area
+        grid_width = self.width() - grid_start_x
+        current_visible_end_tick = self.visible_start_tick + int(grid_width / self.pixels_per_tick)
+        
+        # Start from the measure that contains or precedes visible_start_tick
+        start_measure_tick = (self.visible_start_tick // ticks_per_measure) * ticks_per_measure
+        end_tick = current_visible_end_tick + ticks_per_measure  # Add padding
+        
+        for tick in range(start_measure_tick, end_tick, ticks_per_measure):
+            if tick >= self.visible_start_tick - ticks_per_measure:  # Include partially visible measures
                 x = self._tick_to_x(tick) + grid_start_x
-                painter.setPen(QColor("#3e4452"))  # Lighter for beats
-                painter.drawLine(int(x), 0, int(x), height)
+                if x >= grid_start_x and x <= self.width():  # Only draw if visible
+                    # Draw measure line
+                    painter.setPen(QColor("#ff79c6"))  # Pink/magenta for measures
+                    painter.drawLine(int(x), 0, int(x), height)
+        
+        # Draw beat lines (lighter, subdivision within measures)
+        if denominator == 8:
+            # For compound time, draw every eighth note
+            ticks_per_subdivision = ticks_per_beat // 2  # Eighth note
+        else:
+            # For simple time, draw every quarter note beat
+            ticks_per_subdivision = ticks_per_beat
+        
+        # Use the same range calculation as measure lines
+        start_beat_tick = (self.visible_start_tick // ticks_per_subdivision) * ticks_per_subdivision
+        
+        for tick in range(start_beat_tick, end_tick, ticks_per_subdivision):
+            if tick >= self.visible_start_tick - ticks_per_subdivision and tick % ticks_per_measure != 0:  # Skip measure lines
+                x = self._tick_to_x(tick) + grid_start_x
+                if x >= grid_start_x and x <= self.width():  # Only draw if visible
+                    painter.setPen(QColor("#3e4452"))  # Lighter for beats
+                    painter.drawLine(int(x), 0, int(x), height)
+
+        # Draw subdivision lines (finest grid lines within beats)
+        if hasattr(self, 'ticks_per_subdivision') and self.ticks_per_subdivision < ticks_per_beat:
+            # Set up custom dashed pen for subdivision lines
+            subdivision_pen = QPen(QColor("#3a3a3a"))  # Lighter color for better subtlety
+            subdivision_pen.setStyle(Qt.CustomDashLine)  # Use custom dash pattern
+            subdivision_pen.setDashPattern([4, 8])  # Pattern: 4 pixels on, 8 pixels off (coarser)
+            subdivision_pen.setWidth(1)
+            
+            # Use the same range calculation as other grid lines
+            start_subdivision_tick = (self.visible_start_tick // self.ticks_per_subdivision) * self.ticks_per_subdivision
+            
+            for tick in range(start_subdivision_tick, end_tick, self.ticks_per_subdivision):
+                if tick >= self.visible_start_tick - self.ticks_per_subdivision:
+                    # Skip if this tick coincides with measure or beat lines
+                    if tick % ticks_per_measure == 0 or tick % ticks_per_beat == 0:
+                        continue
+                    
+                    x = self._tick_to_x(tick) + grid_start_x
+                    if x >= grid_start_x and x <= self.width():  # Only draw if visible
+                        painter.setPen(subdivision_pen)  # Dashed pen for subdivisions
+                        painter.drawLine(int(x), 0, int(x), height)
 
         # Draw MIDI notes
         if self.midi_project:
@@ -256,8 +371,8 @@ class PianoRollWidget(QWidget):
         # y = height - ((pitch + 1) * pixels_per_pitch) + vertical_offset
         # pitch = ((height - y + vertical_offset) / pixels_per_pitch) - 1
         pitch = int((self.height() - y + self.vertical_offset) / self.pixels_per_pitch)
-        # Clamp pitch to valid MIDI range
-        return max(0, min(127, pitch))
+        # Clamp pitch to extended range (C-1 to B9)
+        return max(0, min(119, pitch))
 
     def mousePressEvent(self, event):
         # Ensure this widget has focus for keyboard events
@@ -461,14 +576,14 @@ class PianoRollWidget(QWidget):
         elif event.key() == Qt.Key_Up:
             # Vertical scroll up (show higher pitches)
             self.vertical_offset += 50
-            max_offset = 127 * self.pixels_per_pitch - self.height()
+            max_offset = 119 * self.pixels_per_pitch - self.height()
             self.vertical_offset = min(max_offset, self.vertical_offset)
             self.update()
         
         elif event.key() == Qt.Key_Down:
             # Vertical scroll down (show lower pitches)
             self.vertical_offset -= 50
-            min_offset = -20 * self.pixels_per_pitch
+            min_offset = 0  # Don't scroll below C-1 (MIDI 0)
             self.vertical_offset = max(min_offset, self.vertical_offset)
             self.update()
         
@@ -578,8 +693,8 @@ class PianoRollWidget(QWidget):
                 scroll_amount = scroll_y / 120 * 30  # Convert to reasonable scroll amount
                 self.vertical_offset += scroll_amount
                 # Limit vertical scroll range
-                max_offset = 127 * self.pixels_per_pitch - self.height()
-                min_offset = -20 * self.pixels_per_pitch  # Show some notes below MIDI 0
+                max_offset = 119 * self.pixels_per_pitch - self.height()
+                min_offset = 0  # Don't scroll below C-1 (MIDI 0)
                 self.vertical_offset = max(min_offset, min(max_offset, self.vertical_offset))
                 self.update()
         elif event.modifiers() & Qt.AltModifier:
@@ -588,17 +703,62 @@ class PianoRollWidget(QWidget):
             center_y = self.height() / 2
             self._zoom_vertical(zoom_factor, center_y)
         else:
-            # Normal scroll: Horizontal timeline movement
-            if scroll_y != 0:
-                scroll_amount = scroll_y / 120 * 50  # Convert to reasonable scroll amount
-                self.visible_start_tick = max(0, int(self.visible_start_tick - scroll_amount))
-                self.update()
-            elif scroll_x != 0:
-                scroll_amount = scroll_x / 120 * 50
-                self.visible_start_tick = max(0, int(self.visible_start_tick + scroll_amount))
-                self.update()
+            # Normal scroll: Auto-detect direction (both horizontal and vertical)
+            # Prioritize the axis with larger movement for better UX
+            abs_scroll_x = abs(scroll_x)
+            abs_scroll_y = abs(scroll_y)
+            
+            if abs_scroll_y > abs_scroll_x:
+                # Vertical movement is dominant - handle as vertical scroll
+                if scroll_y != 0:
+                    scroll_amount = scroll_y / 120 * 30  # Convert to reasonable scroll amount
+                    self.vertical_offset += scroll_amount  # Up swipe = scroll up (to higher pitches)
+                    # Limit vertical scroll range
+                    max_offset = 119 * self.pixels_per_pitch - self.height()
+                    min_offset = 0  # Don't scroll below C-1 (MIDI 0)
+                    self.vertical_offset = max(min_offset, min(max_offset, self.vertical_offset))
+                    self.update()
+            else:
+                # Horizontal movement is dominant - handle as horizontal scroll
+                if scroll_y != 0:
+                    scroll_amount = scroll_y / 120 * 50  # Convert to reasonable scroll amount
+                    # Flip direction for intuitive trackpad behavior: right swipe = move right
+                    self.visible_start_tick = max(0, int(self.visible_start_tick + scroll_amount))
+                    
+                    # Check for range extension and sync measure bar
+                    self._handle_scroll_update()
+                    
+                elif scroll_x != 0:
+                    scroll_amount = scroll_x / 120 * 50
+                    # Flip direction for intuitive trackpad behavior
+                    self.visible_start_tick = max(0, int(self.visible_start_tick - scroll_amount))
+                    
+                    # Check for range extension and sync measure bar
+                    self._handle_scroll_update()
         
         event.accept()
+    
+    def _handle_scroll_update(self):
+        """Handle updates after scrolling (range extension, measure bar sync)"""
+        # Calculate current visible end tick for range extension check
+        grid_start_x = self.piano_width if self.show_piano_keyboard else 0
+        visible_width = self.width() - grid_start_x
+        visible_end_tick = self.visible_start_tick + int(visible_width / self.pixels_per_tick)
+        
+        # Check for range extension
+        self.extend_range_if_needed(visible_end_tick)
+        
+        # Sync measure bar
+        self._sync_measure_bar()
+        
+        # Update display
+        self.update()
+    
+    def set_grid_subdivision(self, subdivision_type: str, ticks_per_subdivision: int):
+        """Set the grid subdivision for beat division lines"""
+        self.grid_subdivision_type = subdivision_type
+        self.ticks_per_subdivision = ticks_per_subdivision
+        self.update()  # Redraw with new subdivision
     
     def _copy_selected_notes(self):
         """Copy selected notes to clipboard"""
@@ -676,6 +836,11 @@ class PianoRollWidget(QWidget):
             # Use command system to paste notes
             command = PasteNotesCommand(self.midi_project.tracks[0], notes_to_paste)
             self.command_history.execute_command(command)
+            
+            # Check if we need to extend range for pasted notes
+            if notes_to_paste:
+                max_end_tick = max(note.end_tick for note in notes_to_paste)
+                self.extend_range_if_needed(max_end_tick)
             
             # Update playback engine after pasting
             self._update_playback_engine()
@@ -840,6 +1005,9 @@ class PianoRollWidget(QWidget):
                     # Fallback to first track
                     command = AddNoteCommand(self.midi_project.tracks[0], new_note)
                     self.command_history.execute_command(command)
+                
+                # Check if we need to extend the horizontal range
+                self.extend_range_if_needed(new_note.end_tick)
                 
                 # Update playback engine with new note
                 self._update_playback_engine()
@@ -1342,8 +1510,8 @@ class PianoRollWidget(QWidget):
         # Background for piano area
         painter.fillRect(0, 0, self.piano_width, height, QColor("#1e1e1e"))
         
-        # Draw white keys first
-        for pitch in range(0, 128):
+        # Draw white keys first (extended range)
+        for pitch in range(0, 120):
             note_index = pitch % 12
             if note_index not in black_keys:  # White key
                 y = self._pitch_to_y(pitch)
@@ -1367,8 +1535,8 @@ class PianoRollWidget(QWidget):
                     painter.setPen(QColor("#282a36"))
                     painter.drawText(5, int(y + key_height - 3), f"C{octave}")
         
-        # Draw black keys on top
-        for pitch in range(0, 128):
+        # Draw black keys on top (extended range)
+        for pitch in range(0, 120):
             note_index = pitch % 12
             if note_index in black_keys:  # Black key
                 y = self._pitch_to_y(pitch)

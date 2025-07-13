@@ -266,34 +266,29 @@ class CompactPlaybackInfoWidget(QWidget):
         layout.setContentsMargins(5, 2, 5, 2)
         layout.setSpacing(5)
         
-        # Playback state
-        self.state_label = QLabel("⏹️")
-        self.state_label.setFont(QFont("Arial", 12))
-        self.state_label.setToolTip("Playback State")
-        layout.addWidget(self.state_label)
+        # Position label with icon
+        position_frame = QFrame()
+        position_frame.setFrameStyle(QFrame.StyledPanel | QFrame.Sunken)
+        position_layout = QHBoxLayout(position_frame)
+        position_layout.setContentsMargins(5, 2, 5, 2)
+        
+        # Time icon
+        time_icon = QLabel("🕐")
+        time_icon.setToolTip("Playback Position")
+        position_layout.addWidget(time_icon)
         
         # Position
         self.position_label = QLabel("0:00")
         self.position_label.setFont(QFont("Arial", 9))
-        self.position_label.setStyleSheet("color: #50fa7b; font-weight: bold;")
+        self.position_label.setStyleSheet("color: #000000; font-weight: bold;")
         self.position_label.setMinimumWidth(40)
         self.position_label.setToolTip("Playback Position")
-        layout.addWidget(self.position_label)
+        position_layout.addWidget(self.position_label)
+        
+        layout.addWidget(position_frame)
     
     def update_playback_info(self, state, current_tick, tempo_bpm):
-        """Update playback information"""
-        from src.playback_engine import PlaybackState
-        
-        # Update state icon
-        state_icons = {
-            PlaybackState.STOPPED: "⏹️",
-            PlaybackState.PLAYING: "▶️",
-            PlaybackState.PAUSED: "⏸️"
-        }
-        
-        icon = state_icons.get(state, "⏹️")
-        self.state_label.setText(icon)
-        
+        """Update playback information"""        
         # Update position
         ticks_per_beat = 480  # Default
         beats = current_tick / ticks_per_beat
