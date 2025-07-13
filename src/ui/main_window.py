@@ -832,14 +832,17 @@ class PyDominoMainWindow(QMainWindow):
         # Check if we need to extend range when scrolling near the end
         self.piano_roll.extend_range_if_needed(visible_end_tick)
         
-        self.piano_roll.update()
+        # Synchronize measure bar with piano roll scrolling (do this before update)
+        try:
+            self.measure_bar.sync_with_piano_roll(
+                self.piano_roll.visible_start_tick,
+                visible_end_tick,
+                self.piano_roll.pixels_per_tick
+            )
+        except Exception as e:
+            print(f"Warning: Measure bar sync failed: {e}")
         
-        # Synchronize measure bar with piano roll scrolling
-        self.measure_bar.sync_with_piano_roll(
-            self.piano_roll.visible_start_tick,
-            visible_end_tick,
-            self.piano_roll.pixels_per_tick
-        )
+        self.piano_roll.update()
             
     def _on_playback_state_changed(self, state: PlaybackState):
         """Handle playback state changes"""

@@ -154,7 +154,31 @@ class PianoRollWidget(QWidget):
             self.visible_end_tick = tick + extension_size
             print(f"Extended horizontal range from {old_end} to {self.visible_end_tick} ticks")
             self._update_scrollbar_range()
+            
+            # Force measure bar resync after range extension
+            self._sync_measure_bar()
+            
             self.update()
+    
+    def _sync_measure_bar(self):
+        """Synchronize measure bar with current piano roll state"""
+        # Get parent main window to update measure bar
+        main_window = self.parent()
+        while main_window and not hasattr(main_window, 'measure_bar'):
+            main_window = main_window.parent()
+            
+        if main_window and hasattr(main_window, 'measure_bar'):
+            # Calculate current visible end tick
+            grid_start_x = self.piano_width if self.show_piano_keyboard else 0
+            visible_width = self.width() - grid_start_x
+            current_visible_end_tick = self.visible_start_tick + int(visible_width / self.pixels_per_tick)
+            
+            # Update measure bar
+            main_window.measure_bar.sync_with_piano_roll(
+                self.visible_start_tick,
+                current_visible_end_tick,
+                self.pixels_per_tick
+            )
 
     def update_display_settings(self):
         """Update display settings and refresh"""
@@ -656,14 +680,37 @@ class PianoRollWidget(QWidget):
             # Normal scroll: Horizontal timeline movement
             if scroll_y != 0:
                 scroll_amount = scroll_y / 120 * 50  # Convert to reasonable scroll amount
-                self.visible_start_tick = max(0, int(self.visible_start_tick - scroll_amount))
-                self.update()
+                # Flip direction for intuitive trackpad behavior: right swipe = move right
+                self.visible_start_tick = max(0, int(self.visible_start_tick + scroll_amount))
+                
+                # Check for range extension and sync measure bar
+                self._handle_scroll_update()
+                
             elif scroll_x != 0:
                 scroll_amount = scroll_x / 120 * 50
-                self.visible_start_tick = max(0, int(self.visible_start_tick + scroll_amount))
-                self.update()
+                # Flip direction for intuitive trackpad behavior
+                self.visible_start_tick = max(0, int(self.visible_start_tick - scroll_amount))
+                
+                # Check for range extension and sync measure bar
+                self._handle_scroll_update()
         
         event.accept()
+    
+    def _handle_scroll_update(self):
+        """Handle updates after scrolling (range extension, measure bar sync)"""
+        # Calculate current visible end tick for range extension check
+        grid_start_x = self.piano_width if self.show_piano_keyboard else 0
+        visible_width = self.width() - grid_start_x
+        visible_end_tick = self.visible_start_tick + int(visible_width / self.pixels_per_tick)
+        
+        # Check for range extension
+        self.extend_range_if_needed(visible_end_tick)
+        
+        # Sync measure bar
+        self._sync_measure_bar()
+        
+        # Update display
+        self.update()
     
     def _copy_selected_notes(self):
         """Copy selected notes to clipboard"""
