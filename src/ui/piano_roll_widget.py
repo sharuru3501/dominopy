@@ -712,7 +712,7 @@ class PianoRollWidget(QWidget):
                 # Vertical movement is dominant - handle as vertical scroll
                 if scroll_y != 0:
                     scroll_amount = scroll_y / 120 * 30  # Convert to reasonable scroll amount
-                    self.vertical_offset -= scroll_amount  # Flip for natural direction
+                    self.vertical_offset += scroll_amount  # Up swipe = scroll up (to higher pitches)
                     # Limit vertical scroll range
                     max_offset = 119 * self.pixels_per_pitch - self.height()
                     min_offset = 0  # Don't scroll below C-1 (MIDI 0)

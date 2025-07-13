@@ -868,21 +868,21 @@ class PyDominoMainWindow(QMainWindow):
         
         music_toolbar.addWidget(ToolbarSeparator())
         
-        # Music info display
+        # Grid subdivision control (moved to music info position)
+        self.grid_subdivision_widget = GridSubdivisionWidget()
+        music_toolbar.addWidget(self.grid_subdivision_widget)
+        
+        music_toolbar.addWidget(ToolbarSeparator())
+        
+        # Consolidated music info display (combines note names and chord info)
         self.music_info_widget = CompactMusicInfoWidget()
         music_toolbar.addWidget(self.music_info_widget)
         
         music_toolbar.addWidget(ToolbarSeparator())
         
-        # Playback info
+        # Playback info (for playback state, time position, etc.)
         self.playback_info_widget = CompactPlaybackInfoWidget()
         music_toolbar.addWidget(self.playback_info_widget)
-        
-        music_toolbar.addWidget(ToolbarSeparator())
-        
-        # Grid subdivision control
-        self.grid_subdivision_widget = GridSubdivisionWidget()
-        music_toolbar.addWidget(self.grid_subdivision_widget)
         
         # Add spacer to push everything to the left
         from PySide6.QtWidgets import QWidget as SpacerWidget
