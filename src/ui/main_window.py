@@ -105,6 +105,7 @@ class PyDominoMainWindow(QMainWindow):
         QTimer.singleShot(150, self._initialize_playback_engine)
         QTimer.singleShot(175, self._initialize_virtual_keyboard)
         QTimer.singleShot(200, self._connect_ui_signals)
+        QTimer.singleShot(250, self._initial_measure_bar_sync)
 
     def _create_menu_bar(self):
         menu_bar = self.menuBar()
@@ -823,6 +824,18 @@ class PyDominoMainWindow(QMainWindow):
         # Convert scrollbar value to horizontal offset in ticks
         self.piano_roll.visible_start_tick = value
         self.piano_roll.update()
+        
+        # Calculate visible end tick based on current window width
+        grid_start_x = self.piano_roll.piano_width if self.piano_roll.show_piano_keyboard else 0
+        visible_width = self.piano_roll.width() - grid_start_x
+        visible_end_tick = self.piano_roll.visible_start_tick + int(visible_width / self.piano_roll.pixels_per_tick)
+        
+        # Synchronize measure bar with piano roll scrolling
+        self.measure_bar.sync_with_piano_roll(
+            self.piano_roll.visible_start_tick,
+            visible_end_tick,
+            self.piano_roll.pixels_per_tick
+        )
             
     def _on_playback_state_changed(self, state: PlaybackState):
         """Handle playback state changes"""
@@ -871,6 +884,20 @@ class PyDominoMainWindow(QMainWindow):
         self.playback_update_timer = QTimer()
         self.playback_update_timer.timeout.connect(self._update_playback_info)
         self.playback_update_timer.start(100)  # Update every 100ms
+    
+    def _initial_measure_bar_sync(self):
+        """Perform initial synchronization of measure bar with piano roll"""
+        # Calculate visible end tick based on current window width
+        grid_start_x = self.piano_roll.piano_width if self.piano_roll.show_piano_keyboard else 0
+        visible_width = self.piano_roll.width() - grid_start_x
+        visible_end_tick = self.piano_roll.visible_start_tick + int(visible_width / self.piano_roll.pixels_per_tick)
+        
+        # Synchronize measure bar with piano roll
+        self.measure_bar.sync_with_piano_roll(
+            self.piano_roll.visible_start_tick,
+            visible_end_tick,
+            self.piano_roll.pixels_per_tick
+        )
     
     def _connect_ui_signals(self):
         """Connect UI signals after initialization"""
@@ -1003,4 +1030,11 @@ class PyDominoMainWindow(QMainWindow):
         print("   Track01 (Teal): Long harmony notes")
         print("   Track02 (Blue): Accent notes")
         print("   Track05 (Purple): Low bass notes")
+    
+    def resizeEvent(self, event):
+        """Handle window resize events to keep measure bar synchronized"""
+        super().resizeEvent(event)
+        
+        # Update measure bar sync after a brief delay to allow layout updates
+        QTimer.singleShot(50, self._initial_measure_bar_sync)
 
