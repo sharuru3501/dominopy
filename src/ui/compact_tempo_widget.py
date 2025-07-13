@@ -139,44 +139,29 @@ class CompactMusicInfoWidget(QWidget):
         """Setup compact UI"""
         layout = QHBoxLayout(self)
         layout.setContentsMargins(5, 2, 5, 2)
-        layout.setSpacing(8)
+        layout.setSpacing(5)
         
-        # Note info
-        note_frame = QFrame()
-        note_frame.setFrameStyle(QFrame.StyledPanel | QFrame.Sunken)
-        note_layout = QHBoxLayout(note_frame)
-        note_layout.setContentsMargins(5, 2, 5, 2)
+        # Unified music info frame
+        music_frame = QFrame()
+        music_frame.setFrameStyle(QFrame.StyledPanel | QFrame.Sunken)
+        music_layout = QHBoxLayout(music_frame)
+        music_layout.setContentsMargins(5, 2, 5, 2)
         
-        self.note_label = QLabel("♪ No notes")
-        self.note_label.setFont(QFont("Arial", 9))
-        self.note_label.setStyleSheet("color: #000000; font-weight: bold; background-color: #f0f0f0; padding: 2px;")
-        self.note_label.setMinimumWidth(120)
-        note_layout.addWidget(self.note_label)
+        self.music_label = QLabel("♪ No notes")
+        self.music_label.setFont(QFont("Arial", 9))
+        self.music_label.setStyleSheet("color: #000000; font-weight: bold; background-color: #f0f0f0; padding: 2px;")
+        self.music_label.setMinimumWidth(200)  # Unified wider width
+        music_layout.addWidget(self.music_label)
         
-        layout.addWidget(note_frame)
-        
-        # Chord info
-        chord_frame = QFrame()
-        chord_frame.setFrameStyle(QFrame.StyledPanel | QFrame.Sunken)
-        chord_layout = QHBoxLayout(chord_frame)
-        chord_layout.setContentsMargins(5, 2, 5, 2)
-        
-        self.chord_label = QLabel("🎵 No chord")
-        self.chord_label.setFont(QFont("Arial", 9))
-        self.chord_label.setStyleSheet("color: #000000; font-weight: bold; background-color: #f0f0f0; padding: 2px;")
-        self.chord_label.setMinimumWidth(180)
-        chord_layout.addWidget(self.chord_label)
-        
-        layout.addWidget(chord_frame)
+        layout.addWidget(music_frame)
     
     def update_notes(self, midi_pitches):
-        """Update displayed notes"""
+        """Update displayed notes in unified format"""
         from src.music_theory import MusicTheory, analyze_harmony
         from src.settings import get_settings_manager
         
         if not midi_pitches:
-            self.note_label.setText("♪ No notes")
-            self.chord_label.setText("🎵 No chord")
+            self.music_label.setText("♪ No notes")
             return
         
         # Get octave offset from settings
@@ -186,38 +171,39 @@ class CompactMusicInfoWidget(QWidget):
         # Analyze harmony
         harmony = analyze_harmony(midi_pitches)
         
-        # Display individual notes with better formatting
+        # Create unified display
         if len(midi_pitches) == 1:
+            # Single note
             note_name = MusicTheory.get_note_name_with_octave(midi_pitches[0], octave_offset=octave_offset)
-            self.note_label.setText(f"♪ {note_name}")
+            self.music_label.setText(f"♪ {note_name}")
         else:
-            # Sort pitches and get note names
-            sorted_pitches = sorted(set(midi_pitches))
-            note_names = [MusicTheory.get_note_name(pitch, octave_offset=octave_offset) for pitch in sorted_pitches]
-            unique_names = list(dict.fromkeys(note_names))  # Preserve order, remove duplicates
-            
-            if len(unique_names) > 4:
-                display_names = unique_names[:4] + ["..."]
+            # Multiple notes - show chord info if available
+            if harmony["chord"]:
+                chord = harmony["chord"]
+                # Get note names for the chord
+                sorted_pitches = sorted(set(midi_pitches))
+                note_names = [MusicTheory.get_note_name(pitch, octave_offset=octave_offset) for pitch in sorted_pitches]
+                unique_names = list(dict.fromkeys(note_names))  # Preserve order, remove duplicates
+                
+                if len(unique_names) > 4:
+                    notes_str = ', '.join(unique_names[:4]) + "..."
+                else:
+                    notes_str = ', '.join(unique_names)
+                
+                # Show chord name with constituent notes
+                self.music_label.setText(f"🎵 {chord.name} ({notes_str})")
             else:
-                display_names = unique_names
-            self.note_label.setText(f"♪ {', '.join(display_names)}")
-        
-        # Display chord with more detail
-        if harmony["chord"]:
-            chord = harmony["chord"]
-            # Get chord notes for display with correct octave
-            chord_note_names = [note.name for note in chord.notes[:4]]  # First 4 notes
-            if len(chord.notes) > 4:
-                chord_note_names.append("...")
-            
-            chord_info = f"{chord.name} ({', '.join(chord_note_names)})"
-            self.chord_label.setText(f"🎵 {chord_info}")
-        else:
-            if len(midi_pitches) > 1:
-                # Show note count for unrecognized chords
-                self.chord_label.setText(f"🎵 Custom ({len(set(midi_pitches))} notes)")
-            else:
-                self.chord_label.setText("🎵 Single note")
+                # No chord detected - just show notes
+                sorted_pitches = sorted(set(midi_pitches))
+                note_names = [MusicTheory.get_note_name(pitch, octave_offset=octave_offset) for pitch in sorted_pitches]
+                unique_names = list(dict.fromkeys(note_names))  # Preserve order, remove duplicates
+                
+                if len(unique_names) > 4:
+                    notes_str = ', '.join(unique_names[:4]) + "..."
+                else:
+                    notes_str = ', '.join(unique_names)
+                
+                self.music_label.setText(f"♪ {notes_str} ({len(set(midi_pitches))} notes)")
     
     def update_selected_notes(self, selected_notes):
         """Update from selected notes (only if no playback is active)"""
@@ -236,7 +222,7 @@ class CompactMusicInfoWidget(QWidget):
     
     def set_chord_text(self, chord_info: str):
         """Set chord text directly (for external updates)"""
-        self.chord_label.setText(f"🎵 {chord_info}")
+        self.music_label.setText(f"🎵 {chord_info}")
     
     def _update_playhead_info(self):
         """Update information based on playhead position"""
@@ -260,13 +246,11 @@ class CompactMusicInfoWidget(QWidget):
                 self.update_notes(pitches)
             else:
                 # No notes playing, show "Playing..." 
-                self.note_label.setText("♪ Playing...")
-                self.chord_label.setText("🎵 (no notes playing)")
+                self.music_label.setText("♪ Playing...")
         else:
             # Not playing - check if we need to revert to "No notes" state
-            if self.note_label.text() == "♪ Playing...":
-                self.note_label.setText("♪ No notes")
-                self.chord_label.setText("🎵 No chord")
+            if self.music_label.text() == "♪ Playing...":
+                self.music_label.setText("♪ No notes")
 
 
 class CompactPlaybackInfoWidget(QWidget):

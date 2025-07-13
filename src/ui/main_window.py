@@ -492,7 +492,17 @@ class PyDominoMainWindow(QMainWindow):
         # Set the default project in piano roll
         self.piano_roll.set_midi_project(default_project)
         
-        self.logger.info("Track manager initialized with 8 default tracks")
+        # Initialize per-track audio routing for all tracks
+        from src.per_track_audio_router import get_per_track_audio_router
+        per_track_router = get_per_track_audio_router()
+        if per_track_router:
+            print("Initializing audio for all tracks...")
+            success_count = per_track_router.initialize_all_tracks(8)
+            print(f"Track manager: initialized audio for {success_count}/8 tracks")
+        else:
+            print("Warning: Per-track audio router not available")
+        
+        print("Track manager initialized with 8 default tracks")
     
     def _on_track_selected(self, track_index: int):
         """Handle track selection"""
