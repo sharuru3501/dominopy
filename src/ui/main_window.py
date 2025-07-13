@@ -8,7 +8,7 @@ from src.ui.status_bar import PyDominoStatusBar
 from src.ui.compact_tempo_widget import (CompactTempoWidget, CompactTimeSignatureWidget, 
                                        CompactMusicInfoWidget, CompactPlaybackInfoWidget, 
                                        ToolbarSeparator)
-from src.midi_parser import load_midi_file
+from src.midi_parser import load_midi_file, save_midi_file
 from src.edit_modes import EditMode
 from src.audio_system import initialize_audio_manager, cleanup_audio_manager, AudioSettings
 from src.playback_engine import initialize_playback_engine, cleanup_playback_engine, get_playback_engine, PlaybackState
@@ -114,6 +114,16 @@ class PyDominoMainWindow(QMainWindow):
 
         open_action = file_menu.addAction("&Open...")
         open_action.triggered.connect(self._open_midi_file)
+        
+        file_menu.addSeparator()
+        
+        save_action = file_menu.addAction("&Save As...")
+        save_action.setShortcut("Ctrl+S")
+        save_action.triggered.connect(self._save_midi_file)
+        
+        export_action = file_menu.addAction("&Export MIDI...")
+        export_action.setShortcut("Ctrl+E")
+        export_action.triggered.connect(self._export_midi_file)
         
         file_menu.addSeparator()
         
@@ -257,6 +267,38 @@ class PyDominoMainWindow(QMainWindow):
                 except Exception as e:
                     print(f"Error loading MIDI file: {e}")
                     # TODO: Show error message to user
+    
+    def _save_midi_file(self):
+        """Save current project as MIDI file"""
+        if not self.piano_roll.midi_project:
+            QMessageBox.warning(self, "No Project", "No project loaded to save.")
+            return
+        
+        file_dialog = QFileDialog(self)
+        file_dialog.setAcceptMode(QFileDialog.AcceptSave)
+        file_dialog.setNameFilter("MIDI Files (*.mid)")
+        file_dialog.setDefaultSuffix("mid")
+        file_dialog.setWindowTitle("Save MIDI File")
+        
+        if file_dialog.exec():
+            selected_files = file_dialog.selectedFiles()
+            if selected_files:
+                file_path = selected_files[0]
+                try:
+                    success = save_midi_file(self.piano_roll.midi_project, file_path)
+                    if success:
+                        self.setWindowTitle(f"PyDomino - {file_path}")
+                        self.status_bar.update_project_name(file_path.split('/')[-1])
+                        self.status_bar.showMessage(f"Project saved as {file_path}", 3000)
+                    else:
+                        QMessageBox.critical(self, "Save Error", f"Failed to save MIDI file to {file_path}")
+                except Exception as e:
+                    print(f"Error saving MIDI file: {e}")
+                    QMessageBox.critical(self, "Save Error", f"Error saving MIDI file: {str(e)}")
+    
+    def _export_midi_file(self):
+        """Export current project as MIDI file (same as save for now)"""
+        self._save_midi_file()
     
     def _undo(self):
         """Undo last operation"""
