@@ -66,6 +66,10 @@ class PianoRollWidget(QWidget):
         # Quantization unit (e.g., 16th note by default)
         self.quantize_grid_ticks = 480 // 4 # Default to 16th note (480 ticks/beat / 4 = 120 ticks)
         
+        # Grid subdivision settings
+        self.grid_subdivision_type = "sixteenth"  # Default subdivision
+        self.ticks_per_subdivision = 120  # Default to 16th note subdivisions
+        
         # Command history for undo/redo
         self.command_history = CommandHistory()
         
@@ -273,6 +277,28 @@ class PianoRollWidget(QWidget):
                 if x >= grid_start_x and x <= self.width():  # Only draw if visible
                     painter.setPen(QColor("#3e4452"))  # Lighter for beats
                     painter.drawLine(int(x), 0, int(x), height)
+
+        # Draw subdivision lines (finest grid lines within beats)
+        if hasattr(self, 'ticks_per_subdivision') and self.ticks_per_subdivision < ticks_per_beat:
+            # Set up custom dashed pen for subdivision lines
+            subdivision_pen = QPen(QColor("#3a3a3a"))  # Lighter color for better subtlety
+            subdivision_pen.setStyle(Qt.CustomDashLine)  # Use custom dash pattern
+            subdivision_pen.setDashPattern([4, 8])  # Pattern: 4 pixels on, 8 pixels off (coarser)
+            subdivision_pen.setWidth(1)
+            
+            # Use the same range calculation as other grid lines
+            start_subdivision_tick = (self.visible_start_tick // self.ticks_per_subdivision) * self.ticks_per_subdivision
+            
+            for tick in range(start_subdivision_tick, end_tick, self.ticks_per_subdivision):
+                if tick >= self.visible_start_tick - self.ticks_per_subdivision:
+                    # Skip if this tick coincides with measure or beat lines
+                    if tick % ticks_per_measure == 0 or tick % ticks_per_beat == 0:
+                        continue
+                    
+                    x = self._tick_to_x(tick) + grid_start_x
+                    if x >= grid_start_x and x <= self.width():  # Only draw if visible
+                        painter.setPen(subdivision_pen)  # Dashed pen for subdivisions
+                        painter.drawLine(int(x), 0, int(x), height)
 
         # Draw MIDI notes
         if self.midi_project:
@@ -677,22 +703,38 @@ class PianoRollWidget(QWidget):
             center_y = self.height() / 2
             self._zoom_vertical(zoom_factor, center_y)
         else:
-            # Normal scroll: Horizontal timeline movement
-            if scroll_y != 0:
-                scroll_amount = scroll_y / 120 * 50  # Convert to reasonable scroll amount
-                # Flip direction for intuitive trackpad behavior: right swipe = move right
-                self.visible_start_tick = max(0, int(self.visible_start_tick + scroll_amount))
-                
-                # Check for range extension and sync measure bar
-                self._handle_scroll_update()
-                
-            elif scroll_x != 0:
-                scroll_amount = scroll_x / 120 * 50
-                # Flip direction for intuitive trackpad behavior
-                self.visible_start_tick = max(0, int(self.visible_start_tick - scroll_amount))
-                
-                # Check for range extension and sync measure bar
-                self._handle_scroll_update()
+            # Normal scroll: Auto-detect direction (both horizontal and vertical)
+            # Prioritize the axis with larger movement for better UX
+            abs_scroll_x = abs(scroll_x)
+            abs_scroll_y = abs(scroll_y)
+            
+            if abs_scroll_y > abs_scroll_x:
+                # Vertical movement is dominant - handle as vertical scroll
+                if scroll_y != 0:
+                    scroll_amount = scroll_y / 120 * 30  # Convert to reasonable scroll amount
+                    self.vertical_offset -= scroll_amount  # Flip for natural direction
+                    # Limit vertical scroll range
+                    max_offset = 119 * self.pixels_per_pitch - self.height()
+                    min_offset = 0  # Don't scroll below C-1 (MIDI 0)
+                    self.vertical_offset = max(min_offset, min(max_offset, self.vertical_offset))
+                    self.update()
+            else:
+                # Horizontal movement is dominant - handle as horizontal scroll
+                if scroll_y != 0:
+                    scroll_amount = scroll_y / 120 * 50  # Convert to reasonable scroll amount
+                    # Flip direction for intuitive trackpad behavior: right swipe = move right
+                    self.visible_start_tick = max(0, int(self.visible_start_tick + scroll_amount))
+                    
+                    # Check for range extension and sync measure bar
+                    self._handle_scroll_update()
+                    
+                elif scroll_x != 0:
+                    scroll_amount = scroll_x / 120 * 50
+                    # Flip direction for intuitive trackpad behavior
+                    self.visible_start_tick = max(0, int(self.visible_start_tick - scroll_amount))
+                    
+                    # Check for range extension and sync measure bar
+                    self._handle_scroll_update()
         
         event.accept()
     
@@ -711,6 +753,12 @@ class PianoRollWidget(QWidget):
         
         # Update display
         self.update()
+    
+    def set_grid_subdivision(self, subdivision_type: str, ticks_per_subdivision: int):
+        """Set the grid subdivision for beat division lines"""
+        self.grid_subdivision_type = subdivision_type
+        self.ticks_per_subdivision = ticks_per_subdivision
+        self.update()  # Redraw with new subdivision
     
     def _copy_selected_notes(self):
         """Copy selected notes to clipboard"""

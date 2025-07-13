@@ -19,6 +19,7 @@ from src.per_track_audio_router import initialize_per_track_audio_router, cleanu
 from src.ui.track_list_widget import TrackListWidget
 from src.ui.virtual_keyboard_widget import VirtualKeyboardWidget
 from src.ui.measure_bar_widget import MeasureBarWidget
+from src.ui.grid_subdivision_widget import GridSubdivisionWidget
 
 class PyDominoMainWindow(QMainWindow):
     def __init__(self):
@@ -877,6 +878,12 @@ class PyDominoMainWindow(QMainWindow):
         self.playback_info_widget = CompactPlaybackInfoWidget()
         music_toolbar.addWidget(self.playback_info_widget)
         
+        music_toolbar.addWidget(ToolbarSeparator())
+        
+        # Grid subdivision control
+        self.grid_subdivision_widget = GridSubdivisionWidget()
+        music_toolbar.addWidget(self.grid_subdivision_widget)
+        
         # Add spacer to push everything to the left
         from PySide6.QtWidgets import QWidget as SpacerWidget
         from PySide6.QtWidgets import QSizePolicy
@@ -920,6 +927,9 @@ class PyDominoMainWindow(QMainWindow):
         if hasattr(self.piano_roll, 'project_changed'):
             self.piano_roll.project_changed.connect(self.music_info_widget.set_project)
         
+        # Connect grid subdivision widget to piano roll
+        self.grid_subdivision_widget.subdivision_changed.connect(self._on_grid_subdivision_changed)
+        
         # Set initial project in music info widget
         if hasattr(self.piano_roll, 'midi_project') and self.piano_roll.midi_project:
             self.music_info_widget.set_project(self.piano_roll.midi_project)
@@ -946,6 +956,12 @@ class PyDominoMainWindow(QMainWindow):
             self.measure_bar.update()
         
         print(f"Time signature changed to {numerator}/{denominator}")
+    
+    def _on_grid_subdivision_changed(self, subdivision_type: str, ticks_per_subdivision: int):
+        """Handle grid subdivision changes from subdivision widget"""
+        if hasattr(self.piano_roll, 'set_grid_subdivision'):
+            self.piano_roll.set_grid_subdivision(subdivision_type, ticks_per_subdivision)
+        print(f"Grid subdivision changed to {subdivision_type} ({ticks_per_subdivision} ticks)")
     
     def _update_project_ui(self, midi_project):
         """Update UI elements when a new project is loaded"""
