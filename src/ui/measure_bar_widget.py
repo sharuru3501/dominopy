@@ -90,22 +90,32 @@ class MeasureBarWidget(QWidget):
         painter.setFont(font)
         
         # Draw measure lines and numbers
-        measure_number = 1
-        for tick in range(0, self.visible_end_tick + ticks_per_measure, ticks_per_measure):
-            if tick >= self.visible_start_tick:
+        # Calculate the range of measures to draw, ensuring we cover the visible area
+        start_measure_tick = (self.visible_start_tick // ticks_per_measure) * ticks_per_measure
+        end_tick = self.visible_end_tick + ticks_per_measure
+        
+        for tick in range(start_measure_tick, end_tick, ticks_per_measure):
+            # Calculate the actual measure number (1-based)
+            measure_number = (tick // ticks_per_measure) + 1
+            
+            # Only draw if this measure line is visible
+            if tick >= self.visible_start_tick - ticks_per_measure:
                 x = self._tick_to_x(tick) + self.grid_start_x
                 
-                # Draw black vertical measure line
-                painter.setPen(QColor("#000000"))  # Black line
-                painter.drawLine(int(x), 0, int(x), self.height())
-                
-                # Draw measure number
-                painter.setPen(QColor("#000000"))  # Black text
-                text_rect = painter.fontMetrics().boundingRect(str(measure_number))
-                
-                # Position text just to the right of the measure line
-                text_x = int(x) + 3  # Small offset from the line
-                text_y = (self.height() + text_rect.height()) // 2 - 2
-                
-                painter.drawText(text_x, text_y, str(measure_number))
-                measure_number += 1
+                # Only draw if the x position is within the visible area
+                if x >= self.grid_start_x and x <= self.width():
+                    # Draw black vertical measure line
+                    painter.setPen(QColor("#000000"))  # Black line
+                    painter.drawLine(int(x), 0, int(x), self.height())
+                    
+                    # Draw measure number
+                    painter.setPen(QColor("#000000"))  # Black text
+                    text_rect = painter.fontMetrics().boundingRect(str(measure_number))
+                    
+                    # Position text just to the right of the measure line
+                    text_x = int(x) + 3  # Small offset from the line
+                    text_y = (self.height() + text_rect.height()) // 2 - 2
+                    
+                    # Only draw text if it fits within the widget bounds
+                    if text_x + text_rect.width() <= self.width():
+                        painter.drawText(text_x, text_y, str(measure_number))
