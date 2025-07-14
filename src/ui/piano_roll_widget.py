@@ -1669,11 +1669,9 @@ class PianoRollWidget(QWidget):
             print(f"Chord Info: {info}")
     
     def _play_track_preview(self, pitch: int, velocity: int = 100):
-        """Play a preview note using the current track's audio source via MIDI routing"""
-        from src.midi_routing import get_midi_routing_manager
-        from src.audio_system import get_audio_manager
+        """Play a preview note using the current track's audio source via unified routing coordinator"""
+        from src.audio_routing_coordinator import get_audio_routing_coordinator
         from src.track_manager import get_track_manager
-        from src.per_track_audio_router import get_per_track_audio_router
         
         # Stop any previous preview notes to prevent overlapping/sustained notes
         self._stop_all_preview_notes()
@@ -1685,53 +1683,42 @@ class PianoRollWidget(QWidget):
         
         active_track_index = track_manager.get_active_track_index()
         
-        # Try per-track audio router first (this handles track-specific audio sources)
-        per_track_router = get_per_track_audio_router()
-        if per_track_router:
-            # Create a temporary MIDI note for preview
-            from src.midi_data_model import MidiNote
-            preview_note = MidiNote(
-                start_tick=0,
-                duration=480,  # Short duration for preview
-                pitch=pitch,
-                velocity=velocity,
-                channel=active_track_index  # Use track index as channel
-            )
-            
-            success = per_track_router.play_note(active_track_index, preview_note)
+        # Get unified audio routing coordinator
+        coordinator = get_audio_routing_coordinator()
+        if not coordinator:
+            print("PianoRoll: Audio routing coordinator not available for preview")
+            return False
+        
+        # Create a temporary MIDI note for preview
+        from src.midi_data_model import MidiNote
+        preview_note = MidiNote(
+            start_tick=0,
+            duration=480,  # Short duration for preview
+            pitch=pitch,
+            velocity=velocity,
+            channel=active_track_index  # Use track index as channel
+        )
+        
+        # Use unified audio routing coordinator
+        try:
+            success = coordinator.play_note(active_track_index, preview_note)
             if success:
                 self.active_preview_notes.add(pitch)
                 # Auto-stop the note after 500ms
                 QTimer.singleShot(500, lambda: self._stop_track_preview(pitch))
+                print(f"PianoRoll: Preview note {pitch} playing on track {active_track_index}")
                 return True
+            else:
+                print(f"PianoRoll: Audio routing coordinator failed to play preview note {pitch} on track {active_track_index}")
+        except Exception as e:
+            print(f"PianoRoll: Audio routing coordinator error for preview note {pitch}: {e}")
         
-        # Fallback to MIDI routing with track-specific channel
-        midi_router = get_midi_routing_manager()
-        if midi_router:
-            midi_router.play_note(active_track_index, pitch, velocity)  # Use track index as channel
-            self.active_preview_notes.add(pitch)
-            
-            # Auto-stop the note after 500ms to prevent indefinite sustain
-            QTimer.singleShot(500, lambda: self._stop_track_preview(pitch))
-            return True
-        
-        # Final fallback to direct audio manager
-        audio_manager = get_audio_manager()
-        if audio_manager:
-            result = audio_manager.play_note_immediate(pitch, velocity, active_track_index)
-            if result:
-                self.active_preview_notes.add(pitch)
-                # Auto-stop the note after 500ms
-                QTimer.singleShot(500, lambda: self._stop_track_preview(pitch))
-            return result
         return False
     
     def _stop_track_preview(self, pitch: int):
-        """Stop a preview note using the current track's audio source via MIDI routing"""
-        from src.midi_routing import get_midi_routing_manager
-        from src.audio_system import get_audio_manager
+        """Stop a preview note using the current track's audio source via unified routing coordinator"""
+        from src.audio_routing_coordinator import get_audio_routing_coordinator
         from src.track_manager import get_track_manager
-        from src.per_track_audio_router import get_per_track_audio_router
         
         if pitch not in self.active_preview_notes:
             return False  # Note is not currently playing
@@ -1743,39 +1730,36 @@ class PianoRollWidget(QWidget):
         
         active_track_index = track_manager.get_active_track_index()
         
-        # Try per-track audio router first
-        per_track_router = get_per_track_audio_router()
-        if per_track_router:
-            # Create a temporary MIDI note for stopping
-            from src.midi_data_model import MidiNote
-            preview_note = MidiNote(
-                start_tick=0,
-                duration=480,
-                pitch=pitch,
-                velocity=100,
-                channel=active_track_index
-            )
-            
-            success = per_track_router.stop_note(active_track_index, preview_note)
-            if success:
-                self.active_preview_notes.discard(pitch)
-                return True
-        
-        # Try MIDI routing with track-specific channel
-        midi_router = get_midi_routing_manager()
-        if midi_router:
-            midi_router.stop_note(active_track_index, pitch)  # Use track index as channel
+        # Get unified audio routing coordinator
+        coordinator = get_audio_routing_coordinator()
+        if not coordinator:
+            # Force remove from tracking if coordinator not available
             self.active_preview_notes.discard(pitch)
-            return True
+            return False
         
-        # Fallback to direct audio manager
-        audio_manager = get_audio_manager()
-        if audio_manager:
-            result = audio_manager.stop_note_immediate(pitch, active_track_index)
-            if result:
-                self.active_preview_notes.discard(pitch)
-            return result
-        return False
+        # Create a temporary MIDI note for stopping
+        from src.midi_data_model import MidiNote
+        preview_note = MidiNote(
+            start_tick=0,
+            duration=480,
+            pitch=pitch,
+            velocity=100,
+            channel=active_track_index
+        )
+        
+        # Use unified audio routing coordinator
+        try:
+            success = coordinator.stop_note(active_track_index, preview_note)
+            self.active_preview_notes.discard(pitch)  # Always remove from tracking
+            if success:
+                print(f"PianoRoll: Preview note {pitch} stopped on track {active_track_index}")
+            else:
+                print(f"PianoRoll: Audio routing coordinator failed to stop preview note {pitch}")
+            return success
+        except Exception as e:
+            print(f"PianoRoll: Audio routing coordinator error stopping preview note {pitch}: {e}")
+            self.active_preview_notes.discard(pitch)  # Always remove from tracking
+            return False
     
     def _stop_all_preview_notes(self):
         """Stop all currently playing preview notes"""

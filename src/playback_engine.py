@@ -281,69 +281,49 @@ class PlaybackEngine(QObject):
                 self.playback_finished.emit()
     
     def _schedule_event(self, event: PlaybackEvent):
-        """Execute a playback event using per-track routing"""
-        # Try per-track routing first, then fallback to legacy routing
-        per_track_router = get_per_track_audio_router()
+        """Execute a playback event using unified audio routing coordinator"""
+        from src.audio_routing_coordinator import get_audio_routing_coordinator
+        
+        # Get the unified audio routing coordinator
+        coordinator = get_audio_routing_coordinator()
         
         if event.event_type == "note_on":
             success = False
             
-            if per_track_router:
-                # Use per-track audio routing
+            if coordinator:
+                # Use unified audio routing coordinator
                 try:
-                    success = per_track_router.play_note(event.track_index, event.note)
+                    success = coordinator.play_note(event.track_index, event.note)
                     if success:
                         self.active_notes.add(event.note.pitch)
                         print(f"PlaybackEngine: Playing note {event.note.pitch} on track {event.track_index} at tick {event.tick}")
                     else:
-                        print(f"PlaybackEngine: Per-track routing failed for note {event.note.pitch} on track {event.track_index}")
+                        print(f"PlaybackEngine: Audio routing coordinator failed for note {event.note.pitch} on track {event.track_index}")
                 except Exception as e:
-                    print(f"PlaybackEngine: Per-track routing error for note {event.note.pitch}: {e}")
-            
-            # Fallback to legacy routing if per-track routing failed
-            if not success:
-                midi_router = get_midi_routing_manager()
-                if midi_router:
-                    try:
-                        midi_router.play_note(event.note.channel, event.note.pitch, event.note.velocity)
-                        self.active_notes.add(event.note.pitch)
-                        print(f"PlaybackEngine: Playing note {event.note.pitch} (legacy routing)")
-                    except Exception as e:
-                        print(f"PlaybackEngine: Legacy MIDI routing error: {e}")
-                else:
-                    # No MIDI routing available - respect routing settings
-                    print(f"PlaybackEngine: No MIDI routing available for note {event.note.pitch}")
+                    print(f"PlaybackEngine: Audio routing coordinator error for note {event.note.pitch}: {e}")
+            else:
+                print(f"PlaybackEngine: Audio routing coordinator not available")
         
         elif event.event_type == "note_off":
             if event.note.pitch in self.active_notes:
                 success = False
                 
-                if per_track_router:
-                    # Use per-track audio routing
+                if coordinator:
+                    # Use unified audio routing coordinator
                     try:
-                        success = per_track_router.stop_note(event.track_index, event.note)
+                        success = coordinator.stop_note(event.track_index, event.note)
                         if success:
                             self.active_notes.discard(event.note.pitch)
                             print(f"PlaybackEngine: Stopping note {event.note.pitch} on track {event.track_index}")
                         else:
-                            print(f"PlaybackEngine: Per-track stop failed for note {event.note.pitch}")
+                            print(f"PlaybackEngine: Audio routing coordinator stop failed for note {event.note.pitch}")
                     except Exception as e:
-                        print(f"PlaybackEngine: Per-track routing error stopping note {event.note.pitch}: {e}")
+                        print(f"PlaybackEngine: Audio routing coordinator error stopping note {event.note.pitch}: {e}")
                 
-                # Fallback to legacy routing if per-track routing failed
+                # Always remove from tracking to prevent stuck notes
                 if not success:
-                    midi_router = get_midi_routing_manager()
-                    if midi_router:
-                        try:
-                            midi_router.stop_note(event.note.channel, event.note.pitch)
-                            self.active_notes.discard(event.note.pitch)
-                            print(f"PlaybackEngine: Stopping note {event.note.pitch} (legacy routing)")
-                        except Exception as e:
-                            print(f"PlaybackEngine: Legacy MIDI stop error: {e}")
-                    else:
-                        # No MIDI routing available - respect routing settings
-                        print(f"PlaybackEngine: No MIDI routing available to stop note {event.note.pitch}")
-                        self.active_notes.discard(event.note.pitch)  # Remove from tracking anyway
+                    self.active_notes.discard(event.note.pitch)
+                    print(f"PlaybackEngine: Force removed note {event.note.pitch} from tracking")
     
     def _stop_all_notes(self):
         """Stop all currently playing notes"""

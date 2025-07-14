@@ -555,17 +555,39 @@ class PyDominoMainWindow(QMainWindow):
         # Set the default project in piano roll
         self.piano_roll.set_midi_project(default_project)
         
-        # Initialize per-track audio routing for all tracks (delayed to ensure all managers are ready)
-        QTimer.singleShot(200, self._initialize_track_audio)
+        # Initialize unified audio routing coordinator (delayed to ensure all managers are ready)
+        QTimer.singleShot(300, self._initialize_unified_audio_routing)
         
         print("Track manager initialized with 8 default tracks")
     
+    def _initialize_unified_audio_routing(self):
+        """Initialize unified audio routing coordinator (called with delay to ensure managers are ready)"""
+        from src.audio_routing_coordinator import initialize_audio_routing_coordinator
+        
+        print("Initializing unified audio routing coordinator...")
+        coordinator = initialize_audio_routing_coordinator()
+        
+        if coordinator and coordinator.state.value == "ready":
+            # Set up routes for all tracks
+            success_count = 0
+            for track_index in range(8):
+                if coordinator.setup_track_route(track_index):
+                    success_count += 1
+            
+            print(f"Unified audio routing: initialized routes for {success_count}/8 tracks")
+            
+            # Print system status
+            status = coordinator.get_system_status()
+            print(f"Audio routing coordinator status: {status}")
+        else:
+            print("Warning: Unified audio routing coordinator not available or failed to initialize")
+    
     def _initialize_track_audio(self):
-        """Initialize per-track audio routing (called with delay to ensure managers are ready)"""
+        """Legacy track audio initialization (deprecated - kept for compatibility)"""
         from src.per_track_audio_router import get_per_track_audio_router
         per_track_router = get_per_track_audio_router()
         if per_track_router:
-            print("Initializing audio for all tracks...")
+            print("Initializing audio for all tracks (legacy method)...")
             success_count = per_track_router.initialize_all_tracks(8)
             print(f"Track manager: initialized audio for {success_count}/8 tracks")
         else:
