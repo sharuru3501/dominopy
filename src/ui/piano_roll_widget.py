@@ -16,6 +16,7 @@ from src.edit_modes import EditMode, EditModeManager
 from src.grid_system import GridManager, GridCell
 from src.audio_system import get_audio_manager
 from src.track_manager import get_track_manager
+from src.audio_source_manager import AudioSourceType
 import copy
 
 class PianoRollWidget(QWidget):
@@ -1592,9 +1593,8 @@ class PianoRollWidget(QWidget):
         # Get pitches from selected notes
         pitches = [note.pitch for note in self.selected_notes]
         
-        # Play all notes simultaneously using track-specific audio
-        for pitch in pitches:
-            self._play_track_preview(pitch, 100)
+        # Play all notes simultaneously as a chord using track-specific audio
+        self._play_chord_preview(pitches, 100)
         
         # Analyze and display chord information
         from src.music_theory import detect_chord, get_note_name_with_octave
@@ -1634,8 +1634,7 @@ class PianoRollWidget(QWidget):
         audio_manager = get_audio_manager()
         if audio_manager:
             pitches = [note.pitch for note in notes_at_playhead]
-            for pitch in pitches:
-                self._play_track_preview(pitch, 100)
+            self._play_chord_preview(pitches, 100)
             
             # Analyze and display chord information
             from src.music_theory import detect_chord, get_note_name_with_octave
@@ -1668,10 +1667,11 @@ class PianoRollWidget(QWidget):
             # Fallback: just print for now
             print(f"Chord Info: {info}")
     
-    def _play_track_preview(self, pitch: int, velocity: int = 100):
-        """Play a preview note using the current track's audio source via unified routing coordinator"""
+    def _play_chord_preview(self, pitches: List[int], velocity: int = 100):
+        """Play multiple notes simultaneously as a chord"""
         from src.audio_routing_coordinator import get_audio_routing_coordinator
         from src.track_manager import get_track_manager
+        from src.audio_source_manager import get_audio_source_manager
         
         # Stop any previous preview notes to prevent overlapping/sustained notes
         self._stop_all_preview_notes()
@@ -1682,6 +1682,133 @@ class PianoRollWidget(QWidget):
             return False
         
         active_track_index = track_manager.get_active_track_index()
+        
+        # Check if track has audio source - skip preview for silent tracks
+        audio_source_manager = get_audio_source_manager()
+        if audio_source_manager:
+            track_source = audio_source_manager.get_track_source(active_track_index)
+            if track_source and track_source.source_type == AudioSourceType.NONE:
+                print(f"PianoRoll: Track {active_track_index} has no audio source - skipping chord preview")
+                return False
+        
+        # Get unified audio routing coordinator
+        coordinator = get_audio_routing_coordinator()
+        if not coordinator or coordinator.state.value != "ready":
+            print(f"PianoRoll: Audio routing coordinator not ready, using legacy fallback for chord")
+            return self._play_chord_preview_legacy(pitches, velocity)
+        
+        # Play all notes in the chord simultaneously
+        from src.midi_data_model import MidiNote
+        success_count = 0
+        
+        for pitch in pitches:
+            preview_note = MidiNote(
+                start_tick=0,
+                end_tick=480,  # Short duration for preview
+                pitch=pitch,
+                velocity=velocity,
+                channel=active_track_index  # Use track index as channel
+            )
+            
+            # Use unified audio routing coordinator
+            try:
+                success = coordinator.play_note(active_track_index, preview_note)
+                if success:
+                    self.active_preview_notes.add(pitch)
+                    success_count += 1
+                else:
+                    print(f"PianoRoll: Failed to play chord note {pitch}")
+            except Exception as e:
+                print(f"PianoRoll: Error playing chord note {pitch}: {e}")
+        
+        if success_count > 0:
+            # Auto-stop all notes after 1000ms (longer for chord)
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(1000, self._stop_all_preview_notes)
+            print(f"PianoRoll: Chord preview with {success_count} notes playing on track {active_track_index}")
+            return True
+        
+        return False
+    
+    def _play_chord_preview_legacy(self, pitches: List[int], velocity: int = 100):
+        """Legacy fallback for chord preview when coordinator is not available"""
+        from src.midi_routing import get_midi_routing_manager
+        from src.audio_system import get_audio_manager
+        from src.track_manager import get_track_manager
+        from src.audio_source_manager import get_audio_source_manager
+        
+        print("PianoRoll: Using legacy chord preview fallback")
+        
+        # Get active track information
+        track_manager = get_track_manager()
+        if not track_manager:
+            return False
+        
+        active_track_index = track_manager.get_active_track_index()
+        
+        # Get track source information
+        audio_source_manager = get_audio_source_manager()
+        track_source = None
+        if audio_source_manager:
+            track_source = audio_source_manager.get_track_source(active_track_index)
+            if track_source and track_source.source_type == AudioSourceType.NONE:
+                print(f"PianoRoll: Track {active_track_index} has no audio source - skipping chord preview")
+                return False
+        
+        # Try MIDI routing for chord
+        midi_router = get_midi_routing_manager()
+        if midi_router and track_source:
+            # Set program if available
+            if track_source.program is not None:
+                try:
+                    program_change = [0xC0 | (track_source.channel & 0x0F), track_source.program & 0x7F]
+                    midi_router.send_midi_message(program_change)
+                except Exception as e:
+                    print(f"PianoRoll: Could not set program for chord: {e}")
+            
+            # Play all notes in the chord simultaneously
+            channel = track_source.channel if track_source else active_track_index
+            success_count = 0
+            
+            for pitch in pitches:
+                try:
+                    midi_router.play_note(channel, pitch, velocity)
+                    self.active_preview_notes.add(pitch)
+                    success_count += 1
+                except Exception as e:
+                    print(f"PianoRoll: Error playing chord note {pitch}: {e}")
+            
+            if success_count > 0:
+                from PySide6.QtCore import QTimer
+                QTimer.singleShot(1000, self._stop_all_preview_notes)
+                print(f"PianoRoll: Legacy chord preview with {success_count} notes on channel {channel}")
+                return True
+        
+        return False
+
+    def _play_track_preview(self, pitch: int, velocity: int = 100):
+        """Play a preview note using the current track's audio source via unified routing coordinator"""
+        from src.audio_routing_coordinator import get_audio_routing_coordinator
+        from src.track_manager import get_track_manager
+        from src.audio_source_manager import get_audio_source_manager
+        
+        # Stop any previous preview notes to prevent overlapping/sustained notes
+        self._stop_all_preview_notes()
+        
+        # Get active track information
+        track_manager = get_track_manager()
+        if not track_manager:
+            return False
+        
+        active_track_index = track_manager.get_active_track_index()
+        
+        # Check if track has audio source - skip preview for silent tracks
+        audio_source_manager = get_audio_source_manager()
+        if audio_source_manager:
+            track_source = audio_source_manager.get_track_source(active_track_index)
+            if track_source and track_source.source_type == AudioSourceType.NONE:
+                print(f"PianoRoll: Track {active_track_index} has no audio source - skipping note preview")
+                return False
         
         # Get unified audio routing coordinator
         coordinator = get_audio_routing_coordinator()
@@ -1773,6 +1900,11 @@ class PianoRollWidget(QWidget):
         # Try MIDI routing with track's channel and program
         midi_router = get_midi_routing_manager()
         if midi_router:
+            # Skip preview if track has no audio source
+            if track_source and track_source.source_type == AudioSourceType.NONE:
+                print(f"PianoRoll: Track {active_track_index} has no audio source - skipping note preview")
+                return False
+            
             # Set program for the track's channel if we have source info
             if track_source and track_source.program is not None:
                 try:
@@ -1797,6 +1929,11 @@ class PianoRollWidget(QWidget):
         # Final fallback to direct audio manager
         audio_manager = get_audio_manager()
         if audio_manager:
+            # Skip preview if track has no audio source
+            if track_source and track_source.source_type == AudioSourceType.NONE:
+                print(f"PianoRoll: Track {active_track_index} has no audio source - skipping audio manager preview")
+                return False
+            
             # Set program if we have track source info
             if track_source and track_source.program is not None:
                 try:

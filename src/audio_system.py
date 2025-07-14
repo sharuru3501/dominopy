@@ -68,11 +68,26 @@ class FluidSynthAudio(QObject):
             return False
         
         try:
-            # Create FluidSynth instance with minimal gain initially
+            # Create FluidSynth instance with zero gain initially to prevent startup pops
             self.fs = fluidsynth.Synth(
                 samplerate=self.settings.sample_rate,
-                gain=0.1  # Start with very low gain to minimize startup pops
+                gain=0.0  # Start with zero gain to completely prevent startup pops
             )
+            
+            # Load soundfont before starting driver to avoid audio artifacts
+            soundfont_path = self._find_soundfont()
+            if soundfont_path:
+                self.sfid = self.fs.sfload(soundfont_path)
+                if self.sfid != -1:
+                    # Select bank 0 and program 0 (General MIDI) while muted
+                    self.fs.program_select(0, self.sfid, 0, 0)
+                    print(f"FluidSynth: Loaded soundfont and selected program 0 (Piano)")
+                else:
+                    print(f"FluidSynth: Failed to load soundfont: {soundfont_path}")
+                    return False
+            else:
+                print("FluidSynth: No soundfont found")
+                return False
             
             # Start audio driver with explicit CoreAudio driver for macOS
             if sys.platform == "darwin":
@@ -80,34 +95,26 @@ class FluidSynthAudio(QObject):
             else:
                 self.fs.start()
             
-            # Brief delay to let audio system stabilize and prevent startup pops
-            time.sleep(0.1)
+            # Extended delay to let audio system fully stabilize
+            time.sleep(0.2)
             
-            # Load soundfont
-            soundfont_path = self._find_soundfont()
-            if soundfont_path:
-                self.sfid = self.fs.sfload(soundfont_path)
-                if self.sfid != -1:
-                    # Select bank 0 and program 0 (General MIDI)
-                    self.fs.program_select(0, self.sfid, 0, 0)
-                    
-                    # Now set the proper gain after initialization is complete
-                    try:
-                        # FluidSynth uses setting() method for gain control
-                        self.fs.setting('synth.gain', self.settings.gain)
-                    except Exception as e:
-                        print(f"Warning: Could not set FluidSynth gain: {e}")
-                    
-                    self.is_initialized = True
-                    self.audio_ready.emit()
-                    print(f"Audio initialized with soundfont: {soundfont_path}")
-                    return True
-                else:
-                    self.audio_error.emit(f"Failed to load soundfont: {soundfont_path}")
-                    return False
-            else:
-                self.audio_error.emit("No soundfont found")
-                return False
+            # Gradually increase gain to prevent pop noise
+            try:
+                # Slowly ramp up gain from 0 to target level
+                target_gain = self.settings.gain
+                steps = 10
+                for i in range(steps + 1):
+                    current_gain = (target_gain * i) / steps
+                    self.fs.setting('synth.gain', current_gain)
+                    time.sleep(0.01)  # 10ms delay between steps
+                print(f"FluidSynth: Gain smoothly increased to {target_gain}")
+            except Exception as e:
+                print(f"Warning: Could not set FluidSynth gain: {e}")
+            
+            self.is_initialized = True
+            self.audio_ready.emit()
+            print(f"Audio initialized with soundfont: {soundfont_path}")
+            return True
                 
         except Exception as e:
             self.audio_error.emit(f"Audio initialization error: {str(e)}")

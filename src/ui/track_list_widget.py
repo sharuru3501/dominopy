@@ -110,17 +110,34 @@ class TrackItemWidget(QFrame):
         info_layout.addWidget(self.info_label)
         
         # Instrument (MIDI program)
-        program_text = "No Instrument" if program is None else f"Prg {program}"
+        # Handle special case for "Silent" tracks from track manager
+        track_info = self.track_manager.get_track_info(self.track_index) if self.track_manager else {}
+        gm_instrument_name = track_info.get('gm_instrument_name', 'No Instrument')
+        
+        if gm_instrument_name == "Silent":
+            program_text = "🔇 Silent"
+            program_color = "#FF6B6B"  # Red color for silent tracks
+        elif program is None:
+            program_text = "No Instrument"
+            program_color = "#888888"  # Gray color for no instrument
+        else:
+            program_text = f"Prg {program}"
+            program_color = "#888888"  # Gray color for normal programs
+        
         self.program_label = QLabel(program_text)
         self.program_label.setFont(QFont("Arial", 7))
-        self.program_label.setStyleSheet("color: #888888;")
+        self.program_label.setStyleSheet(f"color: {program_color};")
         info_layout.addWidget(self.program_label)
         
         # Audio source
         display_name = f"{audio_source_name[:18]}..." if len(audio_source_name) > 18 else audio_source_name
         self.audio_source_label = QLabel(display_name)
         self.audio_source_label.setFont(QFont("Arial", 7))
-        self.audio_source_label.setStyleSheet("color: #4A90E2;")  # Blue color for audio source
+        # Set color based on audio source type
+        if "🚫 No Audio Source" in audio_source_name:
+            self.audio_source_label.setStyleSheet("color: #FF6B6B;")  # Red color for no audio source
+        else:
+            self.audio_source_label.setStyleSheet("color: #4A90E2;")  # Blue color for audio source
         self.audio_source_label.setToolTip(f"Audio Source: {audio_source_name}")
         info_layout.addWidget(self.audio_source_label)
         
@@ -159,12 +176,32 @@ class TrackItemWidget(QFrame):
         """Update track information display"""
         self.info_label.setText(f"{note_count} notes")
         if hasattr(self, 'program_label'):
-            program_text = "No Instrument" if program is None else f"Prg {program}"
+            # Get GM instrument name from track manager for proper display
+            track_info = self.track_manager.get_track_info(self.track_index) if self.track_manager else {}
+            gm_instrument_name = track_info.get('gm_instrument_name', 'No Instrument')
+            
+            if gm_instrument_name == "Silent":
+                program_text = "🔇 Silent"
+                program_color = "#FF6B6B"  # Red color for silent tracks
+            elif program is None:
+                program_text = "No Instrument"
+                program_color = "#888888"  # Gray color for no instrument
+            else:
+                program_text = f"Prg {program}"
+                program_color = "#888888"  # Gray color for normal programs
+            
             self.program_label.setText(program_text)
+            self.program_label.setStyleSheet(f"color: {program_color};")
         if audio_source_name is not None and hasattr(self, 'audio_source_label'):
             display_name = f"{audio_source_name[:18]}..." if len(audio_source_name) > 18 else audio_source_name
             self.audio_source_label.setText(display_name)
             self.audio_source_label.setToolTip(f"Audio Source: {audio_source_name}")
+            
+            # Update audio source color based on type
+            if "🚫 No Audio Source" in audio_source_name:
+                self.audio_source_label.setStyleSheet("color: #FF6B6B;")  # Red color for no audio source
+            else:
+                self.audio_source_label.setStyleSheet("color: #4A90E2;")  # Blue color for audio source
     
     def update_color(self, color: str):
         """Update the track color"""

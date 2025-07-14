@@ -12,6 +12,7 @@ from PySide6.QtCore import QObject, Signal
 
 class AudioSourceType(Enum):
     """Types of audio sources available"""
+    NONE = "none"  # No audio source - silent tracks
     SOUNDFONT = "soundfont"
     EXTERNAL_MIDI = "external_midi"
     INTERNAL_FLUIDSYNTH = "internal_fluidsynth"
@@ -28,7 +29,9 @@ class AudioSource:
     channel: int = 0  # MIDI channel
     
     def __str__(self):
-        if self.source_type == AudioSourceType.SOUNDFONT:
+        if self.source_type == AudioSourceType.NONE:
+            return f"{self.name} (No Audio)"
+        elif self.source_type == AudioSourceType.SOUNDFONT:
             return f"{self.name} (SF2)"
         elif self.source_type == AudioSourceType.EXTERNAL_MIDI:
             return f"{self.name} (MIDI)"
@@ -178,6 +181,15 @@ class AudioSourceManager(QObject):
     
     def _create_default_sources(self):
         """Create default internal audio sources"""
+        # No Audio Source - for silent tracks
+        no_audio_source = AudioSource(
+            id="no_audio_source",
+            name="No Audio Source",
+            source_type=AudioSourceType.NONE,
+            program=None,  # No program for silent tracks
+            channel=0
+        )
+        
         # Internal FluidSynth source
         internal_source = AudioSource(
             id="internal_fluidsynth",
@@ -185,6 +197,7 @@ class AudioSourceManager(QObject):
             source_type=AudioSourceType.INTERNAL_FLUIDSYNTH
         )
         
+        self.available_sources["no_audio_source"] = no_audio_source
         self.available_sources["internal_fluidsynth"] = internal_source
     
     def get_available_sources(self) -> List[AudioSource]:
@@ -233,9 +246,14 @@ class AudioSourceManager(QObject):
         source_id = self.track_sources.get(track_index)
         print(f"🔍 Getting track {track_index} source: {source_id}")
         if source_id:
-            # Handle channel-specific internal FluidSynth identifiers
+            # First check if the source exists in available_sources
+            source = self.available_sources.get(source_id)
+            if source:
+                print(f"🎯 Found source {source_id}: program={source.program}, name={source.name}")
+                return source
+            
+            # Handle legacy channel-specific internal FluidSynth identifiers (for compatibility)
             if source_id.startswith("internal_fluidsynth_ch"):
-                # Create a channel-specific internal FluidSynth source
                 try:
                     channel = int(source_id.split("ch")[1])
                 except (ValueError, IndexError):
@@ -253,42 +271,19 @@ class AudioSourceManager(QObject):
                     file_path=None,
                     midi_port_name=None
                 )
-            
-            # Handle regular source identifiers
-            source = self.available_sources.get(source_id)
-            if source:
-                print(f"🎯 Found source {source_id}: program={source.program}, name={source.name}")
-                # Apply track-specific program if using internal FluidSynth
-                if source.source_type == AudioSourceType.INTERNAL_FLUIDSYNTH:
-                    # Only apply default programs if this is the generic internal_fluidsynth source
-                    # Don't override track-specific sources that already have custom programs
-                    if source_id == "internal_fluidsynth":
-                        # No default program assignment - tracks start empty
-                        # Return source as-is without modifying program
-                        pass
-                    # For track-specific sources (internal_fluidsynth_ch0 etc), return as-is
-                    else:
-                        print(f"✅ Returning track-specific source with program {source.program}")
-                        return source
-                return source
         
-        # Default to internal FluidSynth
-        default_source = self.available_sources.get("internal_fluidsynth")
-        if default_source and track_index == 0:
+        # Default to "No Audio Source" - tracks start silent
+        default_source = self.available_sources.get("no_audio_source")
+        if default_source:
             return default_source
-        elif default_source:
-            # Return default source as-is - no automatic program assignment
-            import copy
-            track_source = copy.copy(default_source)
-            track_source.channel = track_index % 16
-            # Don't set program - tracks start empty
-            return track_source
         
-        return default_source
+        # Fallback to internal FluidSynth if no_audio_source is not available
+        fallback_source = self.available_sources.get("internal_fluidsynth")
+        return fallback_source
     
     def get_track_source_id(self, track_index: int) -> str:
         """Get the source ID assigned to a track"""
-        return self.track_sources.get(track_index, "internal_fluidsynth")
+        return self.track_sources.get(track_index, "no_audio_source")
     
     def refresh_sources(self):
         """Refresh the list of available audio sources"""
@@ -309,8 +304,8 @@ class AudioSourceManager(QObject):
         """Validate track assignments and set defaults for unassigned tracks"""
         for track_index in range(max_tracks):
             if track_index not in self.track_sources:
-                # Assign default source with unique channel per track
-                self.track_sources[track_index] = f"internal_fluidsynth_ch{track_index}"
+                # Assign "No Audio Source" as default - tracks start silent
+                self.track_sources[track_index] = "no_audio_source"
 
 # Global audio source manager instance
 _audio_source_manager: Optional[AudioSourceManager] = None

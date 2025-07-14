@@ -393,10 +393,14 @@ class TrackManager(QObject):
             audio_source = audio_source_manager.get_track_source(track_index)
             if audio_source:
                 audio_source_name = audio_source.name
-                # For Internal FluidSynth, show GM instrument name
+                # Handle different audio source types
                 if hasattr(audio_source, 'source_type'):
                     from src.audio_source_manager import AudioSourceType
-                    if audio_source.source_type == AudioSourceType.INTERNAL_FLUIDSYNTH:
+                    if audio_source.source_type == AudioSourceType.NONE:
+                        # For "No Audio Source" - track is silent
+                        audio_source_name = "🚫 No Audio Source"
+                        gm_instrument_name = "Silent"
+                    elif audio_source.source_type == AudioSourceType.INTERNAL_FLUIDSYNTH:
                         if audio_source.program is not None:
                             gm_instrument_name = get_gm_instrument_name(audio_source.program)
                             audio_source_name = f"GM: {gm_instrument_name}"

@@ -79,20 +79,25 @@ class AudioSourceDialog(QDialog):
         # Source type selection
         self.source_type_group = QButtonGroup()
         
+        self.no_audio_radio = QRadioButton("🚫 No Audio Source")
+        self.no_audio_radio.setChecked(True)  # Default to "No Audio Source"
+        self.no_audio_radio.toggled.connect(self.on_source_type_changed)
+        self.source_type_group.addButton(self.no_audio_radio, 0)
+        category_widget.addWidget(self.no_audio_radio)
+        
         self.internal_radio = QRadioButton("🎵 Internal FluidSynth")
-        self.internal_radio.setChecked(True)
         self.internal_radio.toggled.connect(self.on_source_type_changed)
-        self.source_type_group.addButton(self.internal_radio, 0)
+        self.source_type_group.addButton(self.internal_radio, 1)
         category_widget.addWidget(self.internal_radio)
         
         self.soundfont_radio = QRadioButton("🎼 Soundfont Files")
         self.soundfont_radio.toggled.connect(self.on_source_type_changed)
-        self.source_type_group.addButton(self.soundfont_radio, 1)
+        self.source_type_group.addButton(self.soundfont_radio, 2)
         category_widget.addWidget(self.soundfont_radio)
         
         self.midi_radio = QRadioButton("🔌 External MIDI")
         self.midi_radio.toggled.connect(self.on_source_type_changed)
-        self.source_type_group.addButton(self.midi_radio, 2)
+        self.source_type_group.addButton(self.midi_radio, 3)
         category_widget.addWidget(self.midi_radio)
         
         # Source list
@@ -167,11 +172,26 @@ class AudioSourceDialog(QDialog):
         
         sources = []
         
-        if self.internal_radio.isChecked():
-            # Internal FluidSynth
+        if self.no_audio_radio.isChecked():
+            # No Audio Source
+            no_audio_source = self.audio_source_manager.available_sources.get("no_audio_source")
+            if no_audio_source:
+                sources = [no_audio_source]
+        elif self.internal_radio.isChecked():
+            # Internal FluidSynth - include both generic and track-specific sources
+            sources = []
+            
+            # Add generic internal FluidSynth source
             internal_source = self.audio_source_manager.available_sources.get("internal_fluidsynth")
             if internal_source:
-                sources = [internal_source]
+                sources.append(internal_source)
+            
+            # Add track-specific internal FluidSynth sources
+            for source_id, source in self.audio_source_manager.available_sources.items():
+                if (source.source_type == AudioSourceType.INTERNAL_FLUIDSYNTH and 
+                    source_id.startswith("internal_fluidsynth_ch") and
+                    source not in sources):
+                    sources.append(source)
         elif self.soundfont_radio.isChecked():
             # Soundfont sources
             sources = self.audio_source_manager.get_soundfont_sources()
@@ -185,7 +205,9 @@ class AudioSourceDialog(QDialog):
             item.setData(Qt.UserRole, source.id)
             
             # Add icon based on type
-            if source.source_type == AudioSourceType.SOUNDFONT:
+            if source.source_type == AudioSourceType.NONE:
+                item.setText(f"🚫 {source.name}")
+            elif source.source_type == AudioSourceType.SOUNDFONT:
                 item.setText(f"🎼 {source.name}")
             elif source.source_type == AudioSourceType.EXTERNAL_MIDI:
                 item.setText(f"🔌 {source.name}")
@@ -218,6 +240,7 @@ class AudioSourceDialog(QDialog):
         
         # Type information
         type_text = {
+            AudioSourceType.NONE: "No Audio Source (Silent)",
             AudioSourceType.SOUNDFONT: "Soundfont File (.sf2)",
             AudioSourceType.EXTERNAL_MIDI: "External MIDI Device",
             AudioSourceType.INTERNAL_FLUIDSYNTH: "Internal FluidSynth"
@@ -229,17 +252,21 @@ class AudioSourceDialog(QDialog):
         info_text = f"Source ID: {source.id}\n"
         info_text += f"Type: {source.source_type.value}\n"
         
-        if source.file_path:
-            import os
-            file_size = os.path.getsize(source.file_path) / (1024 * 1024)
-            info_text += f"File: {source.file_path}\n"
-            info_text += f"Size: {file_size:.1f} MB\n"
-        
-        if source.midi_port_name:
-            info_text += f"MIDI Port: {source.midi_port_name}\n"
-        
-        info_text += f"Program: {source.program}\n"
-        info_text += f"Channel: {source.channel}\n"
+        if source.source_type == AudioSourceType.NONE:
+            info_text += "Description: This track will be silent and produce no audio.\n"
+            info_text += "Use this option when you want the track to have no sound.\n"
+        else:
+            if source.file_path:
+                import os
+                file_size = os.path.getsize(source.file_path) / (1024 * 1024)
+                info_text += f"File: {source.file_path}\n"
+                info_text += f"Size: {file_size:.1f} MB\n"
+            
+            if source.midi_port_name:
+                info_text += f"MIDI Port: {source.midi_port_name}\n"
+            
+            info_text += f"Program: {source.program}\n"
+            info_text += f"Channel: {source.channel}\n"
         
         if source.source_type == AudioSourceType.SOUNDFONT:
             soundfont_info = self.audio_source_manager.get_soundfont_info(source.file_path)
@@ -266,7 +293,9 @@ class AudioSourceDialog(QDialog):
             return
         
         # Select correct radio button
-        if source.source_type == AudioSourceType.SOUNDFONT:
+        if source.source_type == AudioSourceType.NONE:
+            self.no_audio_radio.setChecked(True)
+        elif source.source_type == AudioSourceType.SOUNDFONT:
             self.soundfont_radio.setChecked(True)
         elif source.source_type == AudioSourceType.EXTERNAL_MIDI:
             self.midi_radio.setChecked(True)
@@ -363,7 +392,22 @@ class AudioSourceDialog(QDialog):
         # Update the selected source ID to the track-specific one
         self.selected_source_id = track_specific_id
         
+        # Immediately assign the track-specific source to the track
+        success = self.audio_source_manager.assign_source_to_track(self.track_index, track_specific_id)
+        if success:
+            print(f"✅ Assigned track-specific source {track_specific_id} to track {self.track_index}")
+        else:
+            print(f"❌ Failed to assign track-specific source {track_specific_id} to track {self.track_index}")
+        
         # Update the display
         self.update_details(track_source)
+        
+        # Reinitialize audio routing to apply the new instrument
+        if coordinator:
+            setup_success = coordinator.setup_track_route(self.track_index)
+            if setup_success:
+                print(f"✅ Track {self.track_index} audio routing reinitialized for GM instrument {program}")
+            else:
+                print(f"❌ Failed to reinitialize audio routing for track {self.track_index}")
         
         print(f"Track {self.track_index} GM instrument changed to: Program {program} - {get_gm_instrument_name(program)}")
