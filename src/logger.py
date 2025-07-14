@@ -45,16 +45,6 @@ def set_debug_mode(enabled: bool):
         else:
             logger.setLevel(logging.INFO)
 
-# Convenience functions for quick debugging
-def debug_print(*args, **kwargs):
-    """Print debug information only when debug mode is enabled"""
-    if DEBUG_MODE:
-        print("[DEBUG]", *args, **kwargs)
-
-def info_print(*args, **kwargs):
-    """Print informational messages (always shown)"""
-    print("[INFO]", *args, **kwargs)
-
 # Legacy print replacement - can be used to quickly replace print() calls
 def print_debug(*args, **kwargs):
     """Replacement for print() - only shows in debug mode"""
