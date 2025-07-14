@@ -1687,8 +1687,21 @@ class PianoRollWidget(QWidget):
         coordinator = get_audio_routing_coordinator()
         if not coordinator or coordinator.state.value != "ready":
             print(f"PianoRoll: Audio routing coordinator not ready (state: {coordinator.state.value if coordinator else 'None'})")
-            # Fallback to legacy audio systems
-            return self._play_track_preview_legacy(pitch, velocity)
+            
+            # Try to initialize coordinator if not done
+            if not coordinator:
+                print("PianoRoll: Attempting to initialize audio routing coordinator...")
+                from src.audio_routing_coordinator import initialize_audio_routing_coordinator
+                coordinator = initialize_audio_routing_coordinator()
+                if coordinator and coordinator.state.value == "ready":
+                    print("PianoRoll: Successfully initialized audio routing coordinator")
+                    # Continue with coordinator
+                else:
+                    print("PianoRoll: Failed to initialize coordinator, using legacy fallback")
+                    return self._play_track_preview_legacy(pitch, velocity)
+            else:
+                print(f"PianoRoll: Using legacy fallback for preview on track {active_track_index}")
+                return self._play_track_preview_legacy(pitch, velocity)
         
         # Create a temporary MIDI note for preview
         from src.midi_data_model import MidiNote
@@ -1707,20 +1720,24 @@ class PianoRollWidget(QWidget):
                 self.active_preview_notes.add(pitch)
                 # Auto-stop the note after 500ms
                 QTimer.singleShot(500, lambda: self._stop_track_preview(pitch))
-                print(f"PianoRoll: Preview note {pitch} playing on track {active_track_index}")
+                print(f"PianoRoll: Preview note {pitch} playing on track {active_track_index} via coordinator")
                 return True
             else:
                 print(f"PianoRoll: Audio routing coordinator failed to play preview note {pitch} on track {active_track_index}")
+                # If coordinator fails, try legacy fallback
+                return self._play_track_preview_legacy(pitch, velocity)
         except Exception as e:
             print(f"PianoRoll: Audio routing coordinator error for preview note {pitch}: {e}")
-        
-        return False
+            # If coordinator has error, try legacy fallback
+            return self._play_track_preview_legacy(pitch, velocity)
     
     def _play_track_preview_legacy(self, pitch: int, velocity: int = 100):
         """Legacy fallback for track preview when coordinator is not available"""
         from src.midi_routing import get_midi_routing_manager
         from src.audio_system import get_audio_manager
         from src.track_manager import get_track_manager
+        from src.audio_source_manager import get_audio_source_manager
+        from src.per_track_audio_router import get_per_track_audio_router
         
         print("PianoRoll: Using legacy preview fallback")
         
@@ -1730,26 +1747,71 @@ class PianoRollWidget(QWidget):
             return False
         
         active_track_index = track_manager.get_active_track_index()
+        print(f"PianoRoll: Legacy preview for track {active_track_index}")
         
-        # Try MIDI routing first
+        # Try per-track router with track-specific source first
+        per_track_router = get_per_track_audio_router()
+        if per_track_router:
+            from src.midi_data_model import MidiNote
+            preview_note = MidiNote(0, 480, pitch, velocity, active_track_index)
+            
+            success = per_track_router.play_note(active_track_index, preview_note)
+            if success:
+                self.active_preview_notes.add(pitch)
+                QTimer.singleShot(500, lambda: self._stop_track_preview_legacy(pitch))
+                print(f"PianoRoll: Legacy preview via per-track router - note {pitch} on track {active_track_index}")
+                return True
+        
+        # Get active track's audio source info for better routing
+        audio_source_manager = get_audio_source_manager()
+        track_source = None
+        if audio_source_manager:
+            track_source = audio_source_manager.get_track_source(active_track_index)
+            if track_source:
+                print(f"PianoRoll: Active track {active_track_index} uses source: {track_source.name} (ch: {track_source.channel}, prog: {track_source.program})")
+        
+        # Try MIDI routing with track's channel and program
         midi_router = get_midi_routing_manager()
         if midi_router:
-            midi_router.play_note(active_track_index, pitch, velocity)
+            # Set program for the track's channel if we have source info
+            if track_source:
+                try:
+                    # Send program change before note
+                    program_change = [0xC0 | (track_source.channel & 0x0F), track_source.program & 0x7F]
+                    midi_router.send_midi_message(program_change)
+                    print(f"PianoRoll: Set program {track_source.program} on channel {track_source.channel}")
+                except Exception as e:
+                    print(f"PianoRoll: Could not set program: {e}")
+            
+            # Play note on appropriate channel
+            channel = track_source.channel if track_source else active_track_index
+            midi_router.play_note(channel, pitch, velocity)
             self.active_preview_notes.add(pitch)
             QTimer.singleShot(500, lambda: self._stop_track_preview_legacy(pitch))
-            print(f"PianoRoll: Legacy preview via MIDI routing - note {pitch} on track {active_track_index}")
+            print(f"PianoRoll: Legacy preview via MIDI routing - note {pitch} on channel {channel}")
             return True
         
-        # Fallback to direct audio manager
+        # Final fallback to direct audio manager
         audio_manager = get_audio_manager()
         if audio_manager:
-            result = audio_manager.play_note_immediate(pitch, velocity, active_track_index)
+            # Set program if we have track source info
+            if track_source:
+                try:
+                    audio_manager.set_program(track_source.program)
+                    audio_manager.set_channel(track_source.channel)
+                    print(f"PianoRoll: Set audio manager to program {track_source.program}, channel {track_source.channel}")
+                except Exception as e:
+                    print(f"PianoRoll: Could not configure audio manager: {e}")
+            
+            channel = track_source.channel if track_source else active_track_index
+            result = audio_manager.play_note_immediate(pitch, velocity, channel)
             if result:
                 self.active_preview_notes.add(pitch)
                 QTimer.singleShot(500, lambda: self._stop_track_preview_legacy(pitch))
-                print(f"PianoRoll: Legacy preview via audio manager - note {pitch}")
+                print(f"PianoRoll: Legacy preview via audio manager - note {pitch} on channel {channel}")
             return result
         
+        print("PianoRoll: No audio systems available for preview")
         return False
     
     def _stop_track_preview_legacy(self, pitch: int):
@@ -1757,6 +1819,8 @@ class PianoRollWidget(QWidget):
         from src.midi_routing import get_midi_routing_manager
         from src.audio_system import get_audio_manager
         from src.track_manager import get_track_manager
+        from src.audio_source_manager import get_audio_source_manager
+        from src.per_track_audio_router import get_per_track_audio_router
         
         if pitch not in self.active_preview_notes:
             return False
@@ -1767,20 +1831,39 @@ class PianoRollWidget(QWidget):
         
         active_track_index = track_manager.get_active_track_index()
         
-        # Try MIDI routing first
+        # Try per-track router first
+        per_track_router = get_per_track_audio_router()
+        if per_track_router:
+            from src.midi_data_model import MidiNote
+            preview_note = MidiNote(0, 480, pitch, 100, active_track_index)
+            success = per_track_router.stop_note(active_track_index, preview_note)
+            if success:
+                self.active_preview_notes.discard(pitch)
+                return True
+        
+        # Get track source for proper channel
+        audio_source_manager = get_audio_source_manager()
+        track_source = None
+        if audio_source_manager:
+            track_source = audio_source_manager.get_track_source(active_track_index)
+        
+        # Try MIDI routing with correct channel
         midi_router = get_midi_routing_manager()
         if midi_router:
-            midi_router.stop_note(active_track_index, pitch)
+            channel = track_source.channel if track_source else active_track_index
+            midi_router.stop_note(channel, pitch)
             self.active_preview_notes.discard(pitch)
             return True
         
         # Fallback to direct audio manager  
         audio_manager = get_audio_manager()
         if audio_manager:
-            result = audio_manager.stop_note_immediate(pitch, active_track_index)
+            channel = track_source.channel if track_source else active_track_index
+            result = audio_manager.stop_note_immediate(pitch, channel)
             self.active_preview_notes.discard(pitch)
             return result
         
+        self.active_preview_notes.discard(pitch)  # Always remove from tracking
         return False
     
     def _stop_track_preview(self, pitch: int):
