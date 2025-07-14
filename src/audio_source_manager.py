@@ -229,6 +229,27 @@ class AudioSourceManager(QObject):
         """Get the audio source assigned to a track"""
         source_id = self.track_sources.get(track_index)
         if source_id:
+            # Handle channel-specific internal FluidSynth identifiers
+            if source_id.startswith("internal_fluidsynth_ch"):
+                # Create a channel-specific internal FluidSynth source
+                try:
+                    channel = int(source_id.split("ch")[1])
+                except (ValueError, IndexError):
+                    channel = track_index
+                
+                from src.track_manager import DEFAULT_TRACK_PROGRAMS
+                program = DEFAULT_TRACK_PROGRAMS[track_index] if track_index < len(DEFAULT_TRACK_PROGRAMS) else 1
+                
+                return AudioSource(
+                    name=source_id,
+                    source_type=AudioSourceType.INTERNAL_FLUIDSYNTH,
+                    channel=channel,
+                    program=program,
+                    file_path=None,
+                    midi_port_name=None
+                )
+            
+            # Handle regular source identifiers
             source = self.available_sources.get(source_id)
             if source:
                 # Apply track-specific program if using internal FluidSynth

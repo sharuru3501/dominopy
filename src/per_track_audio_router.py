@@ -61,22 +61,27 @@ class PerTrackAudioRouter(QObject):
         self.audio_source_manager = get_audio_source_manager()
         self.audio_manager = get_audio_manager()
         self.midi_routing_manager = get_midi_routing_manager()
+        print(f"PerTrackRouter: Updated manager references - ASM: {self.audio_source_manager is not None}, AM: {self.audio_manager is not None}, MRM: {self.midi_routing_manager is not None}")
     
     def initialize_track_audio(self, track_index: int) -> bool:
         """Initialize audio for a specific track based on its assigned source"""
+        print(f"PerTrackRouter: Initializing track {track_index}...")
+        
         # Update manager references if needed
         if not self.audio_source_manager:
             self._update_manager_references()
         
         if not self.audio_source_manager:
-            print(f"No audio source manager available for track {track_index}")
+            print(f"PerTrackRouter: No audio source manager available for track {track_index}")
             return False
         
         # Get assigned audio source
         source = self.audio_source_manager.get_track_source(track_index)
         if not source:
-            print(f"No audio source assigned to track {track_index}")
+            print(f"PerTrackRouter: No audio source assigned to track {track_index}")
             return False
+        
+        print(f"PerTrackRouter: Track {track_index} source: {source.name} (type: {source.source_type}, ch: {source.channel}, prog: {source.program})")
         
         # Clean up existing instance
         self.cleanup_track_audio(track_index)
@@ -273,11 +278,14 @@ class PerTrackAudioRouter(QObject):
         """Play a note using the track's assigned audio source"""
         instance = self.track_instances.get(track_index)
         if not instance:
+            print(f"PerTrackRouter: No instance for track {track_index}, attempting to initialize...")
             # Try to initialize if not done yet
             if not self.initialize_track_audio(track_index):
+                print(f"PerTrackRouter: Failed to initialize track {track_index}")
                 return False
             instance = self.track_instances.get(track_index)
             if not instance:
+                print(f"PerTrackRouter: Still no instance for track {track_index} after initialization")
                 return False
         
         try:
