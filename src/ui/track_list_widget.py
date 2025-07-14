@@ -110,13 +110,15 @@ class TrackItemWidget(QFrame):
         info_layout.addWidget(self.info_label)
         
         # Instrument (MIDI program)
-        self.program_label = QLabel(f"Prg {program}")
+        program_text = "No Instrument" if program is None else f"Prg {program}"
+        self.program_label = QLabel(program_text)
         self.program_label.setFont(QFont("Arial", 7))
         self.program_label.setStyleSheet("color: #888888;")
         info_layout.addWidget(self.program_label)
         
         # Audio source
-        self.audio_source_label = QLabel(f"{audio_source_name[:12]}...")
+        display_name = f"{audio_source_name[:18]}..." if len(audio_source_name) > 18 else audio_source_name
+        self.audio_source_label = QLabel(display_name)
         self.audio_source_label.setFont(QFont("Arial", 7))
         self.audio_source_label.setStyleSheet("color: #4A90E2;")  # Blue color for audio source
         self.audio_source_label.setToolTip(f"Audio Source: {audio_source_name}")
@@ -156,10 +158,11 @@ class TrackItemWidget(QFrame):
     def update_info(self, note_count: int, program: int = None, audio_source_name: str = None):
         """Update track information display"""
         self.info_label.setText(f"{note_count} notes")
-        if program is not None and hasattr(self, 'program_label'):
-            self.program_label.setText(f"Prg {program}")
+        if hasattr(self, 'program_label'):
+            program_text = "No Instrument" if program is None else f"Prg {program}"
+            self.program_label.setText(program_text)
         if audio_source_name is not None and hasattr(self, 'audio_source_label'):
-            display_name = f"{audio_source_name[:12]}..." if len(audio_source_name) > 12 else audio_source_name
+            display_name = f"{audio_source_name[:18]}..." if len(audio_source_name) > 18 else audio_source_name
             self.audio_source_label.setText(display_name)
             self.audio_source_label.setToolTip(f"Audio Source: {audio_source_name}")
     

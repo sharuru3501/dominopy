@@ -74,8 +74,11 @@ class FluidSynthAudio(QObject):
                 gain=0.1  # Start with very low gain to minimize startup pops
             )
             
-            # Start audio driver
-            self.fs.start()
+            # Start audio driver with explicit CoreAudio driver for macOS
+            if sys.platform == "darwin":
+                self.fs.start(driver='coreaudio')
+            else:
+                self.fs.start()
             
             # Brief delay to let audio system stabilize and prevent startup pops
             time.sleep(0.1)
@@ -480,6 +483,10 @@ class AudioManager(QObject):
     
     def set_program(self, program: int) -> bool:
         """Set MIDI program (instrument)"""
+        if program is None:
+            print("AudioManager: Cannot set program to None - track has no instrument")
+            return False
+            
         self.current_program = program
         
         if self.use_fluidsynth and self.fluidsynth_audio:

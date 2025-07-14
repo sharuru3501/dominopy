@@ -46,10 +46,10 @@ class MidiNote:
         return self.end_tick - self.start_tick
 
 class MidiTrack:
-    def __init__(self, name: str = "New Track", channel: int = 0, program: int = 0, color: str = "#FF6B6B"):
+    def __init__(self, name: str = "New Track", channel: int = 0, program: int = None, color: str = "#FF6B6B"):
         self.name = name
         self.channel = channel
-        self.program = program # MIDI program number (instrument)
+        self.program = program # MIDI program number (instrument), None for empty tracks
         self.color = color     # Track color for visual distinction
         self.notes: List[MidiNote] = []
         # Add other MIDI events later (e.g., CC, Pitch Bend)

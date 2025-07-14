@@ -38,7 +38,7 @@ class AudioChannelState:
     """Represents the state of a MIDI channel"""
     channel: int
     assigned_track: Optional[int] = None
-    current_program: int = 1
+    current_program: int = 0  # 0-based GM program numbers
     active_notes: Set[int] = None
     
     def __post_init__(self):
@@ -125,6 +125,11 @@ class AudioRoutingCoordinator:
             print(f"AudioRoutingCoordinator: No audio source for track {track_index}")
             return False
         
+        # Check if audio source has a valid program (instrument)
+        if audio_source.program is None:
+            print(f"AudioRoutingCoordinator: Track {track_index} has no instrument assigned - skipping route setup")
+            return False
+        
         # Allocate channel for track
         channel = self._allocate_channel(track_index, audio_source)
         if channel is None:
@@ -139,6 +144,7 @@ class AudioRoutingCoordinator:
             program=audio_source.program,
             last_used=time.time()
         )
+        print(f"🎵 Created route: track={track_index}, program={audio_source.program}, source={audio_source.name}")
         
         # Set up audio backend for this route
         success = self._setup_audio_backend(route)
@@ -247,7 +253,7 @@ class AudioRoutingCoordinator:
                 if fluidsynth and hasattr(fluidsynth, 'fs'):
                     try:
                         fluidsynth.fs.program_select(route.channel, fluidsynth.sfid, 0, route.program)
-                        print(f"AudioRoutingCoordinator: Set program {route.program} for channel {route.channel}")
+                        print(f"✅ AudioRoutingCoordinator: Set program {route.program} ({route.audio_source.name}) for channel {route.channel}")
                         return True
                     except Exception as e:
                         print(f"AudioRoutingCoordinator: Failed to set program: {e}")
@@ -267,6 +273,20 @@ class AudioRoutingCoordinator:
     def _route_note_on(self, route: AudioRoute, note: MidiNote) -> bool:
         """Route a note-on event through the appropriate audio backend"""
         if route.audio_source.source_type == AudioSourceType.INTERNAL_FLUIDSYNTH:
+            # Ensure correct program is set before playing note
+            channel_state = self.channel_states.get(route.channel)
+            if channel_state and channel_state.current_program != route.program:
+                # Program change needed
+                if self.audio_manager and hasattr(self.audio_manager, 'fluidsynth_audio'):
+                    fluidsynth = self.audio_manager.fluidsynth_audio
+                    if fluidsynth and hasattr(fluidsynth, 'fs'):
+                        try:
+                            fluidsynth.fs.program_select(route.channel, fluidsynth.sfid, 0, route.program)
+                            channel_state.current_program = route.program
+                            print(f"🎵 Program changed to {route.program} ({route.audio_source.name}) on channel {route.channel}")
+                        except Exception as e:
+                            print(f"❌ Failed to change program: {e}")
+            
             # Route through MIDI routing manager if available
             if self.midi_routing_manager:
                 self.midi_routing_manager.play_note(route.channel, note.pitch, note.velocity)
@@ -296,6 +316,19 @@ class AudioRoutingCoordinator:
                     return self.per_track_router.play_note(route.track_index, note)
         
         return False
+    
+    def invalidate_track_route(self, track_index: int):
+        """Invalidate and remove the route for a specific track"""
+        if track_index in self.track_routes:
+            route = self.track_routes[track_index]
+            self._release_channel(route.channel)
+            del self.track_routes[track_index]
+            print(f"AudioRoutingCoordinator: Invalidated route for track {track_index}")
+    
+    def refresh_track_route(self, track_index: int) -> bool:
+        """Refresh the route for a track (invalidate old and setup new)"""
+        self.invalidate_track_route(track_index)
+        return self.setup_track_route(track_index)
     
     def _route_note_off(self, route: AudioRoute, note: MidiNote) -> bool:
         """Route a note-off event through the appropriate audio backend"""

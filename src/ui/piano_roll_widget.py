@@ -1707,7 +1707,7 @@ class PianoRollWidget(QWidget):
         from src.midi_data_model import MidiNote
         preview_note = MidiNote(
             start_tick=0,
-            duration=480,  # Short duration for preview
+            end_tick=480,  # Short duration for preview
             pitch=pitch,
             velocity=velocity,
             channel=active_track_index  # Use track index as channel
@@ -1774,7 +1774,7 @@ class PianoRollWidget(QWidget):
         midi_router = get_midi_routing_manager()
         if midi_router:
             # Set program for the track's channel if we have source info
-            if track_source:
+            if track_source and track_source.program is not None:
                 try:
                     # Send program change before note
                     program_change = [0xC0 | (track_source.channel & 0x0F), track_source.program & 0x7F]
@@ -1782,6 +1782,9 @@ class PianoRollWidget(QWidget):
                     print(f"PianoRoll: Set program {track_source.program} on channel {track_source.channel}")
                 except Exception as e:
                     print(f"PianoRoll: Could not set program: {e}")
+            elif track_source and track_source.program is None:
+                print(f"PianoRoll: Track {active_track_index} has no instrument - skipping note preview")
+                return False
             
             # Play note on appropriate channel
             channel = track_source.channel if track_source else active_track_index
@@ -1795,13 +1798,16 @@ class PianoRollWidget(QWidget):
         audio_manager = get_audio_manager()
         if audio_manager:
             # Set program if we have track source info
-            if track_source:
+            if track_source and track_source.program is not None:
                 try:
                     audio_manager.set_program(track_source.program)
                     audio_manager.set_channel(track_source.channel)
                     print(f"PianoRoll: Set audio manager to program {track_source.program}, channel {track_source.channel}")
                 except Exception as e:
                     print(f"PianoRoll: Could not configure audio manager: {e}")
+            elif track_source and track_source.program is None:
+                print(f"PianoRoll: Track {active_track_index} has no instrument - skipping audio manager preview")
+                return False
             
             channel = track_source.channel if track_source else active_track_index
             result = audio_manager.play_note_immediate(pitch, velocity, channel)
@@ -1891,7 +1897,7 @@ class PianoRollWidget(QWidget):
         from src.midi_data_model import MidiNote
         preview_note = MidiNote(
             start_tick=0,
-            duration=480,
+            end_tick=480,
             pitch=pitch,
             velocity=100,
             channel=active_track_index

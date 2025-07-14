@@ -10,6 +10,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QIcon
 
 from src.audio_source_manager import AudioSource, AudioSourceType, get_audio_source_manager
+from src.gm_instruments import get_gm_instrument_name
 
 class AudioSourceDialog(QDialog):
     """Dialog for selecting audio sources for tracks"""
@@ -124,6 +125,12 @@ class AudioSourceDialog(QDialog):
         self.details_info.setMaximumHeight(150)
         details_widget.addWidget(self.details_info)
         
+        # GM Instrument selection button (only shown for Internal FluidSynth)
+        self.gm_instrument_button = QPushButton("🎹 Select GM Instrument...")
+        self.gm_instrument_button.clicked.connect(self._open_gm_instrument_dialog)
+        self.gm_instrument_button.hide()  # Hidden by default
+        details_widget.addWidget(self.gm_instrument_button)
+        
         details_widget.addStretch()
         
         splitter.addWidget(details_container)
@@ -204,6 +211,7 @@ class AudioSourceDialog(QDialog):
             self.details_name.setText("No source selected")
             self.details_type.setText("")
             self.details_info.setText("")
+            self.gm_instrument_button.hide()
             return
         
         self.details_name.setText(source.name)
@@ -238,6 +246,14 @@ class AudioSourceDialog(QDialog):
             if soundfont_info:
                 info_text += f"Available Programs: {len(soundfont_info.programs)}\n"
         
+        # Show GM instrument information for Internal FluidSynth
+        if source.source_type == AudioSourceType.INTERNAL_FLUIDSYNTH:
+            gm_instrument_name = get_gm_instrument_name(source.program)
+            info_text += f"GM Instrument: {gm_instrument_name}\n"
+            self.gm_instrument_button.show()
+        else:
+            self.gm_instrument_button.hide()
+        
         self.details_info.setText(info_text)
     
     def select_current_source(self, source_id: str):
@@ -266,6 +282,13 @@ class AudioSourceDialog(QDialog):
     
     def accept_selection(self):
         """Accept the current selection"""
+        # Use the stored selected_source_id if it was set by GM instrument selection
+        if self.selected_source_id:
+            self.source_selected.emit(self.selected_source_id)
+            self.accept()
+            return
+        
+        # Fallback to current item selection
         current_item = self.source_list.currentItem()
         if current_item:
             self.selected_source_id = current_item.data(Qt.UserRole)
@@ -275,3 +298,72 @@ class AudioSourceDialog(QDialog):
     def get_selected_source_id(self) -> Optional[str]:
         """Get the selected source ID"""
         return self.selected_source_id
+    
+    def _open_gm_instrument_dialog(self):
+        """Open GM instrument selection dialog"""
+        current_item = self.source_list.currentItem()
+        if not current_item:
+            return
+        
+        source_id = current_item.data(Qt.UserRole)
+        source = self.audio_source_manager.available_sources.get(source_id)
+        if not source or source.source_type != AudioSourceType.INTERNAL_FLUIDSYNTH:
+            return
+        
+        from src.ui.gm_instrument_dialog import GMInstrumentDialog
+        
+        dialog = GMInstrumentDialog(source.program, self)
+        dialog.instrument_selected.connect(self._on_gm_instrument_selected)
+        dialog.exec()
+    
+    def _on_gm_instrument_selected(self, program: int):
+        """Handle GM instrument selection"""
+        current_item = self.source_list.currentItem()
+        if not current_item:
+            return
+        
+        source_id = current_item.data(Qt.UserRole)
+        source = self.audio_source_manager.available_sources.get(source_id)
+        if not source or source.source_type != AudioSourceType.INTERNAL_FLUIDSYNTH:
+            return
+        
+        # Update the track's program setting in TrackManager
+        from src.track_manager import get_track_manager
+        track_manager = get_track_manager()
+        if track_manager:
+            success = track_manager.set_track_program(self.track_index, program)
+            if success:
+                print(f"✅ Updated track {self.track_index} default program to {program}")
+            else:
+                print(f"❌ Failed to update track {self.track_index} program")
+        
+        # Invalidate existing audio route to force recreation with new program
+        from src.audio_routing_coordinator import get_audio_routing_coordinator
+        coordinator = get_audio_routing_coordinator()
+        if coordinator:
+            coordinator.invalidate_track_route(self.track_index)
+            print(f"🔄 Invalidated audio route for track {self.track_index} to apply new instrument")
+        
+        # Create or update a track-specific internal FluidSynth source
+        track_specific_id = f"internal_fluidsynth_ch{self.track_index}"
+        
+        # Create a track-specific audio source with the selected program
+        track_source = AudioSource(
+            id=track_specific_id,
+            name=f"GM: {get_gm_instrument_name(program)}",
+            source_type=AudioSourceType.INTERNAL_FLUIDSYNTH,
+            program=program,
+            channel=self.track_index % 16
+        )
+        
+        # Store it in available sources for this session
+        self.audio_source_manager.available_sources[track_specific_id] = track_source
+        print(f"📝 Created track-specific source: {track_specific_id} with program {program}")
+        
+        # Update the selected source ID to the track-specific one
+        self.selected_source_id = track_specific_id
+        
+        # Update the display
+        self.update_details(track_source)
+        
+        print(f"Track {self.track_index} GM instrument changed to: Program {program} - {get_gm_instrument_name(program)}")

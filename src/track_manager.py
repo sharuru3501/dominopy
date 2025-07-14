@@ -6,6 +6,7 @@ from typing import List, Optional, Dict, Any
 from PySide6.QtCore import QObject, Signal
 from src.midi_data_model import MidiProject, MidiTrack, MidiNote
 from src.audio_source_manager import get_audio_source_manager
+from src.gm_instruments import get_gm_instrument_name
 
 # Default color palette for tracks (16 colors with good contrast)
 DEFAULT_TRACK_COLORS = [
@@ -47,36 +48,36 @@ DEFAULT_TRACK_NAMES = [
     "Track15",
 ]
 
-# Default MIDI programs (General MIDI instruments)
+# Default MIDI programs (General MIDI instruments) - 0-based (0-127)
 DEFAULT_TRACK_PROGRAMS = [
-    1,   # Piano (Acoustic Grand Piano)
-    49,  # Strings (String Ensemble 1)
-    57,  # Brass (Trumpet)
-    65,  # Woodwinds (Soprano Sax)
+    0,   # Piano (Acoustic Grand Piano)
+    48,  # Strings (String Ensemble 1)
+    56,  # Brass (Trumpet)
+    64,  # Woodwinds (Soprano Sax)
     115, # Percussion (Woodblock)
-    33,  # Bass (Electric Bass)
-    25,  # Guitar (Acoustic Guitar)
-    53,  # Vocals (Voice Oohs)
-    1,   # Track 9 (Piano)
-    1,   # Track 10 (Piano)
-    1,   # Track 11 (Piano)
-    1,   # Track 12 (Piano)
-    1,   # Track 13 (Piano)
-    1,   # Track 14 (Piano)
-    1,   # Track 15 (Piano)
-    1,   # Track 16 (Piano)
+    32,  # Bass (Electric Bass)
+    24,  # Guitar (Acoustic Guitar)
+    52,  # Vocals (Voice Oohs)
+    0,   # Track 9 (Piano)
+    0,   # Track 10 (Piano)
+    0,   # Track 11 (Piano)
+    0,   # Track 12 (Piano)
+    0,   # Track 13 (Piano)
+    0,   # Track 14 (Piano)
+    0,   # Track 15 (Piano)
+    0,   # Track 16 (Piano)
 ]
 
-# Game Boy soundfont specific programs (for Hiyameshi-DMG-STD and similar)
+# Game Boy soundfont specific programs (for Hiyameshi-DMG-STD and similar) - 0-based
 GAMEBOY_TRACK_PROGRAMS = [
-    1,   # Pulse Wave 1
-    5,   # Pulse Wave 2  
-    9,   # Triangle Wave
-    119, # Noise Channel
-    17,  # Alternative Pulse 1
-    21,  # Alternative Pulse 2
-    25,  # Alternative Triangle
-    127, # Alternative Noise
+    0,   # Pulse Wave 1
+    4,   # Pulse Wave 2  
+    8,   # Triangle Wave
+    118, # Noise Channel
+    16,  # Alternative Pulse 1
+    20,  # Alternative Pulse 2
+    24,  # Alternative Triangle
+    126, # Alternative Noise
 ]
 
 def get_track_program_for_soundfont(track_index: int, soundfont_name: str) -> int:
@@ -86,13 +87,13 @@ def get_track_program_for_soundfont(track_index: int, soundfont_name: str) -> in
         if track_index < len(GAMEBOY_TRACK_PROGRAMS):
             return GAMEBOY_TRACK_PROGRAMS[track_index]
         else:
-            return 1  # Default to first program
+            return 0  # Default to first program
     else:
         # Use standard programs for other soundfonts
         if track_index < len(DEFAULT_TRACK_PROGRAMS):
             return DEFAULT_TRACK_PROGRAMS[track_index]
         else:
-            return 1  # Default to piano
+            return 0  # Default to piano
 
 class TrackManager(QObject):
     """
@@ -150,14 +151,14 @@ class TrackManager(QObject):
                 track.color = self.track_colors[i]
     
     def _create_default_tracks(self):
-        """Create default Domino-style track setup (8 tracks)"""
-        print("TrackManager: Creating default 8-track setup")
+        """Create default empty track setup (8 tracks without instruments)"""
+        print("TrackManager: Creating default 8 empty tracks")
         for i in range(8):
             name = DEFAULT_TRACK_NAMES[i]
             color = DEFAULT_TRACK_COLORS[i % len(DEFAULT_TRACK_COLORS)]
-            program = DEFAULT_TRACK_PROGRAMS[i]
+            # No default program - tracks start empty
             
-            track = MidiTrack(name=name, channel=i, program=program, color=color)
+            track = MidiTrack(name=name, channel=i, program=None, color=color)
             self.project.tracks.append(track)
             self.track_colors[i] = color
     
@@ -170,7 +171,7 @@ class TrackManager(QObject):
         for i in range(min(current_count, 8)):
             track = self.project.tracks[i]
             track.name = DEFAULT_TRACK_NAMES[i]
-            track.program = DEFAULT_TRACK_PROGRAMS[i]
+            # Don't set default program - keep tracks empty
             track.channel = i
             track.color = DEFAULT_TRACK_COLORS[i % len(DEFAULT_TRACK_COLORS)]
             self.track_colors[i] = track.color
@@ -179,9 +180,9 @@ class TrackManager(QObject):
         for i in range(current_count, 8):
             name = DEFAULT_TRACK_NAMES[i]
             color = DEFAULT_TRACK_COLORS[i % len(DEFAULT_TRACK_COLORS)]
-            program = DEFAULT_TRACK_PROGRAMS[i]
+            # No default program - tracks start empty
             
-            track = MidiTrack(name=name, channel=i, program=program, color=color)
+            track = MidiTrack(name=name, channel=i, program=None, color=color)
             self.project.tracks.append(track)
             self.track_colors[i] = color
     
@@ -241,6 +242,27 @@ class TrackManager(QObject):
         
         self.track_color_changed.emit(track_index, color)
     
+    def set_track_program(self, track_index: int, program: int) -> bool:
+        """Set track program (MIDI instrument) by index"""
+        if track_index < 0 or not self.project or track_index >= len(self.project.tracks):
+            return False
+        
+        # Validate program number (0-127 for GM)
+        if program < 0 or program > 127:
+            return False
+        
+        # Update track program
+        track = self.project.tracks[track_index]
+        old_program = track.program
+        track.program = program
+        
+        print(f"TrackManager: Updated track {track_index} program from {old_program} to {program}")
+        
+        # Emit signal to notify other components
+        self.track_settings_changed.emit(track_index)
+        
+        return True
+    
     def add_track(self, name: str = None, color: str = None, program: int = None) -> int:
         """Add a new track and return its index"""
         if not self.project:
@@ -259,14 +281,10 @@ class TrackManager(QObject):
         if not color:
             color = DEFAULT_TRACK_COLORS[track_index % len(DEFAULT_TRACK_COLORS)]
         
-        # Assign default program if not provided
-        if program is None:
-            if track_index < len(DEFAULT_TRACK_PROGRAMS):
-                program = DEFAULT_TRACK_PROGRAMS[track_index]
-            else:
-                program = 1  # Default to piano
+        # No default program - tracks start empty
+        # program remains None if not explicitly provided
         
-        # Create new track
+        # Create new track (program can be None for empty tracks)
         new_track = MidiTrack(name=name, channel=track_index % 16, program=program, color=color)
         
         # Add to project
@@ -368,11 +386,23 @@ class TrackManager(QObject):
         # Get audio source information
         audio_source_manager = get_audio_source_manager()
         audio_source = None
-        audio_source_name = "Internal FluidSynth"
+        audio_source_name = "No Audio Source"
+        gm_instrument_name = "No Instrument" if track.program is None else get_gm_instrument_name(track.program)
+        
         if audio_source_manager:
             audio_source = audio_source_manager.get_track_source(track_index)
             if audio_source:
                 audio_source_name = audio_source.name
+                # For Internal FluidSynth, show GM instrument name
+                if hasattr(audio_source, 'source_type'):
+                    from src.audio_source_manager import AudioSourceType
+                    if audio_source.source_type == AudioSourceType.INTERNAL_FLUIDSYNTH:
+                        if audio_source.program is not None:
+                            gm_instrument_name = get_gm_instrument_name(audio_source.program)
+                            audio_source_name = f"GM: {gm_instrument_name}"
+                        else:
+                            gm_instrument_name = "No Instrument"
+                            audio_source_name = "Internal FluidSynth (No Instrument)"
         
         return {
             'index': track_index,
@@ -383,7 +413,8 @@ class TrackManager(QObject):
             'note_count': len(track.notes),
             'is_active': track_index == self.active_track_index,
             'audio_source': audio_source,
-            'audio_source_name': audio_source_name
+            'audio_source_name': audio_source_name,
+            'gm_instrument_name': gm_instrument_name
         }
     
     def get_all_tracks_info(self) -> List[Dict[str, Any]]:
