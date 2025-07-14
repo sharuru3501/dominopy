@@ -3,6 +3,19 @@ from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
 
 @dataclass
+class AutomationPoint:
+    """Represents a single automation point for parameter control"""
+    tick_offset: int  # Offset from note start in ticks
+    value: int        # Parameter value (0-127 for MIDI compatibility)
+    
+    def __post_init__(self):
+        # Ensure values are within MIDI range
+        self.value = max(0, min(127, self.value))
+    
+    def __str__(self):
+        return f"AutomationPoint(offset={self.tick_offset}, value={self.value})"
+
+@dataclass
 class TempoChange:
     """Represents a tempo change event"""
     tick: int
@@ -40,10 +53,218 @@ class MidiNote:
         self.end_tick = end_tick    # End time in MIDI ticks
         self.velocity = velocity  # Velocity (0-127)
         self.channel = channel    # MIDI channel (0-15)
+        
+        # Automation data for graphical parameter editing
+        self.velocity_automation: Optional[List[AutomationPoint]] = None
+        self.volume_automation: Optional[List[AutomationPoint]] = None      # CC7 automation
+        self.expression_automation: Optional[List[AutomationPoint]] = None  # CC11 automation
+        
+        # Default CC values (when no automation exists)
+        self.volume = 100        # Default volume (CC7)
+        self.expression = 127    # Default expression (CC11)
 
     @property
     def duration(self):
         return self.end_tick - self.start_tick
+    
+    def get_velocity_at_tick_offset(self, tick_offset: int) -> int:
+        """Get interpolated velocity value at a specific tick offset from note start"""
+        if not self.velocity_automation:
+            return self.velocity
+        
+        # Ensure tick_offset is within note bounds
+        tick_offset = max(0, min(self.duration, tick_offset))
+        
+        # If no automation points, return base velocity
+        if not self.velocity_automation:
+            return self.velocity
+        
+        # Sort points by tick_offset
+        sorted_points = sorted(self.velocity_automation, key=lambda p: p.tick_offset)
+        
+        # If tick_offset is before first point, return base velocity
+        if tick_offset < sorted_points[0].tick_offset:
+            return self.velocity
+        
+        # If tick_offset is after last point, return last point value
+        if tick_offset >= sorted_points[-1].tick_offset:
+            return sorted_points[-1].value
+        
+        # Find the two points to interpolate between
+        for i in range(len(sorted_points) - 1):
+            p1 = sorted_points[i]
+            p2 = sorted_points[i + 1]
+            
+            if p1.tick_offset <= tick_offset < p2.tick_offset:
+                # Linear interpolation
+                ratio = (tick_offset - p1.tick_offset) / (p2.tick_offset - p1.tick_offset)
+                interpolated_value = p1.value + ratio * (p2.value - p1.value)
+                return int(round(interpolated_value))
+        
+        # Fallback to base velocity
+        return self.velocity
+    
+    def add_velocity_automation_point(self, tick_offset: int, value: int):
+        """Add or update a velocity automation point"""
+        if self.velocity_automation is None:
+            self.velocity_automation = []
+        
+        # Ensure tick_offset is within note bounds
+        tick_offset = max(0, min(self.duration, tick_offset))
+        value = max(0, min(127, value))
+        
+        # Check if point already exists at this tick_offset
+        for point in self.velocity_automation:
+            if point.tick_offset == tick_offset:
+                point.value = value
+                return
+        
+        # Add new point
+        self.velocity_automation.append(AutomationPoint(tick_offset, value))
+        
+        # Keep sorted by tick_offset
+        self.velocity_automation.sort(key=lambda p: p.tick_offset)
+    
+    def remove_velocity_automation_point(self, tick_offset: int):
+        """Remove velocity automation point at specific tick offset"""
+        if not self.velocity_automation:
+            return
+        
+        self.velocity_automation = [p for p in self.velocity_automation if p.tick_offset != tick_offset]
+        
+        # Clear automation list if empty
+        if not self.velocity_automation:
+            self.velocity_automation = None
+    
+    def get_volume_at_tick_offset(self, tick_offset: int) -> int:
+        """Get interpolated volume value at a specific tick offset from note start"""
+        if not self.volume_automation:
+            return self.volume
+        
+        # Ensure tick_offset is within note bounds
+        tick_offset = max(0, min(self.duration, tick_offset))
+        
+        # Sort points by tick_offset
+        sorted_points = sorted(self.volume_automation, key=lambda p: p.tick_offset)
+        
+        # If tick_offset is before first point, return base volume
+        if tick_offset < sorted_points[0].tick_offset:
+            return self.volume
+        
+        # If tick_offset is after last point, return last point value
+        if tick_offset >= sorted_points[-1].tick_offset:
+            return sorted_points[-1].value
+        
+        # Find the two points to interpolate between
+        for i in range(len(sorted_points) - 1):
+            p1 = sorted_points[i]
+            p2 = sorted_points[i + 1]
+            
+            if p1.tick_offset <= tick_offset < p2.tick_offset:
+                # Linear interpolation
+                ratio = (tick_offset - p1.tick_offset) / (p2.tick_offset - p1.tick_offset)
+                interpolated_value = p1.value + ratio * (p2.value - p1.value)
+                return int(round(interpolated_value))
+        
+        # Fallback to base volume
+        return self.volume
+    
+    def add_volume_automation_point(self, tick_offset: int, value: int):
+        """Add or update a volume automation point"""
+        if self.volume_automation is None:
+            self.volume_automation = []
+        
+        # Ensure tick_offset is within note bounds
+        tick_offset = max(0, min(self.duration, tick_offset))
+        value = max(0, min(127, value))
+        
+        # Check if point already exists at this tick_offset
+        for point in self.volume_automation:
+            if point.tick_offset == tick_offset:
+                point.value = value
+                return
+        
+        # Add new point
+        self.volume_automation.append(AutomationPoint(tick_offset, value))
+        
+        # Keep sorted by tick_offset
+        self.volume_automation.sort(key=lambda p: p.tick_offset)
+    
+    def remove_volume_automation_point(self, tick_offset: int):
+        """Remove volume automation point at specific tick offset"""
+        if not self.volume_automation:
+            return
+        
+        self.volume_automation = [p for p in self.volume_automation if p.tick_offset != tick_offset]
+        
+        # Clear automation list if empty
+        if not self.volume_automation:
+            self.volume_automation = None
+    
+    def get_expression_at_tick_offset(self, tick_offset: int) -> int:
+        """Get interpolated expression value at a specific tick offset from note start"""
+        if not self.expression_automation:
+            return self.expression
+        
+        # Ensure tick_offset is within note bounds
+        tick_offset = max(0, min(self.duration, tick_offset))
+        
+        # Sort points by tick_offset
+        sorted_points = sorted(self.expression_automation, key=lambda p: p.tick_offset)
+        
+        # If tick_offset is before first point, return base expression
+        if tick_offset < sorted_points[0].tick_offset:
+            return self.expression
+        
+        # If tick_offset is after last point, return last point value
+        if tick_offset >= sorted_points[-1].tick_offset:
+            return sorted_points[-1].value
+        
+        # Find the two points to interpolate between
+        for i in range(len(sorted_points) - 1):
+            p1 = sorted_points[i]
+            p2 = sorted_points[i + 1]
+            
+            if p1.tick_offset <= tick_offset < p2.tick_offset:
+                # Linear interpolation
+                ratio = (tick_offset - p1.tick_offset) / (p2.tick_offset - p1.tick_offset)
+                interpolated_value = p1.value + ratio * (p2.value - p1.value)
+                return int(round(interpolated_value))
+        
+        # Fallback to base expression
+        return self.expression
+    
+    def add_expression_automation_point(self, tick_offset: int, value: int):
+        """Add or update an expression automation point"""
+        if self.expression_automation is None:
+            self.expression_automation = []
+        
+        # Ensure tick_offset is within note bounds
+        tick_offset = max(0, min(self.duration, tick_offset))
+        value = max(0, min(127, value))
+        
+        # Check if point already exists at this tick_offset
+        for point in self.expression_automation:
+            if point.tick_offset == tick_offset:
+                point.value = value
+                return
+        
+        # Add new point
+        self.expression_automation.append(AutomationPoint(tick_offset, value))
+        
+        # Keep sorted by tick_offset
+        self.expression_automation.sort(key=lambda p: p.tick_offset)
+    
+    def remove_expression_automation_point(self, tick_offset: int):
+        """Remove expression automation point at specific tick offset"""
+        if not self.expression_automation:
+            return
+        
+        self.expression_automation = [p for p in self.expression_automation if p.tick_offset != tick_offset]
+        
+        # Clear automation list if empty
+        if not self.expression_automation:
+            self.expression_automation = None
 
 class MidiTrack:
     def __init__(self, name: str = "New Track", channel: int = 0, program: int = None, color: str = "#FF6B6B"):

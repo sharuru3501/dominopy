@@ -1,5 +1,5 @@
 
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox
 from PySide6.QtCore import Qt, QRectF, QPointF, Signal, QTimer
 from PySide6.QtGui import QPainter, QColor, QFont, QPen, QBrush, QPolygonF
 from typing import List, Dict
@@ -84,6 +84,21 @@ class PianoRollWidget(QWidget):
         # Preview note tracking
         self.active_preview_notes = set()  # Track currently playing preview notes
         
+        # Parameter automation editing
+        self.parameter_edit_mode = "none"  # "none", "velocity", "volume", "expression"
+        self.parameter_colors = {
+            "velocity": "#FF6B6B",     # Red
+            "volume": "#4ECDC4",       # Teal 
+            "expression": "#45B7D1"    # Blue
+        }
+        
+        # Parameter editing state
+        self.parameter_editing = False
+        self.dragging_automation_point = None  # (note, point_index) or None
+        self.parameter_drag_start_pos = None
+        self.parameter_drag_start_value = None
+        self.last_parameter_edit_pos = None  # For trackpad swiping
+        
         # Update grid settings to match piano roll
         if self.midi_project:
             self.grid_manager.update_grid_settings(self.midi_project.ticks_per_beat, 4)
@@ -93,6 +108,8 @@ class PianoRollWidget(QWidget):
         # Enable focus to receive keyboard events
         self.setFocusPolicy(Qt.StrongFocus)
         
+        # Parameter selection UI will be handled by the main window toolbar
+        
         # Initialize with default empty project state
         self.set_midi_project(None)
         
@@ -100,7 +117,23 @@ class PianoRollWidget(QWidget):
         self.playback_engine = None
         
         # Force initial update to show playhead
-        self.update() 
+        self.update()
+    
+    def set_parameter_edit_mode(self, mode: str):
+        """Set parameter editing mode from external source (e.g., main window toolbar)"""
+        valid_modes = ["none", "velocity", "volume", "expression"]
+        if mode in valid_modes:
+            self.parameter_edit_mode = mode
+            print(f"Parameter edit mode changed to: {self.parameter_edit_mode}")
+            
+            # Force repaint to show/hide parameter layer
+            self.update()
+        else:
+            print(f"Invalid parameter mode: {mode}")
+    
+    def get_parameter_edit_mode(self) -> str:
+        """Get current parameter editing mode"""
+        return self.parameter_edit_mode
 
     def set_midi_project(self, project: MidiProject):
         self.midi_project = project
@@ -344,6 +377,10 @@ class PianoRollWidget(QWidget):
         # Draw playhead
         self._draw_playhead(painter, height, grid_start_x)
         
+        # Draw parameter automation layer (if enabled)
+        if self.parameter_edit_mode != "none":
+            self._draw_parameter_layer(painter, width, height, grid_start_x)
+        
         # Draw mode indicator
         self._draw_mode_indicator(painter, width, height)
 
@@ -383,6 +420,14 @@ class PianoRollWidget(QWidget):
             clicked_x = event.position().x()
             clicked_y = event.position().y()
             
+            # Handle parameter editing mode first
+            if self.parameter_edit_mode != "none":
+                grid_start_x = self.piano_width if self.show_piano_keyboard else 0
+                if clicked_x >= grid_start_x:  # Click is in grid area
+                    handled = self._handle_parameter_editing_click(event, clicked_x, clicked_y, grid_start_x)
+                    if handled:
+                        return
+            
             # Check if click is on piano keyboard
             if self.show_piano_keyboard and clicked_x < self.piano_width:
                 # Handle piano key click (play note preview)
@@ -413,8 +458,11 @@ class PianoRollWidget(QWidget):
 
             # Ensure clicked_tick is not negative
             clicked_tick = max(0, clicked_tick)
-            # Handle different modes
-            if self.edit_mode_manager.is_note_input_mode():
+            # Handle different modes (but not during parameter editing)
+            if self.parameter_edit_mode != "none":
+                # Parameter editing mode - disable other edit modes for better UX
+                pass
+            elif self.edit_mode_manager.is_note_input_mode():
                 self._handle_note_input_mode_click(event, clicked_x, clicked_y, clicked_tick, clicked_pitch)
             elif self.edit_mode_manager.is_selection_mode():
                 self._handle_selection_mode_click(event, clicked_x, clicked_y)
@@ -428,6 +476,12 @@ class PianoRollWidget(QWidget):
             # Check if clicking in grid area (not piano keyboard)
             grid_start_x = self.piano_width if self.show_piano_keyboard else 0
             if clicked_x >= grid_start_x:
+                # Handle parameter editing mode first
+                if self.parameter_edit_mode != "none":
+                    handled = self._handle_parameter_right_click(clicked_x, clicked_y, grid_start_x)
+                    if handled:
+                        return
+                
                 # Convert click to tick position
                 clicked_tick = self._x_to_tick(clicked_x)
                 
@@ -446,22 +500,31 @@ class PianoRollWidget(QWidget):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
-        if self.dragging_playhead:
+        if self.parameter_editing and self.dragging_automation_point:
+            # Handle parameter automation point dragging
+            self._handle_parameter_drag(event)
+        elif self.parameter_edit_mode != "none":
+            # Handle trackpad swiping for parameter editing
+            self._handle_parameter_swipe(event)
+        elif self.dragging_playhead:
             # Handle playhead dragging
             clicked_x = event.position().x()
             grid_start_x = self.piano_width if self.show_piano_keyboard else 0
             new_tick = self._x_to_tick(clicked_x)
             self.playhead_position = max(0, new_tick)
             self.update()
-        elif self.edit_mode_manager.is_note_input_mode():
+        elif self.parameter_edit_mode == "none" and self.edit_mode_manager.is_note_input_mode():
             self._handle_note_input_mode_move(event)
-        elif self.edit_mode_manager.is_selection_mode():
+        elif self.parameter_edit_mode == "none" and self.edit_mode_manager.is_selection_mode():
             self._handle_selection_mode_move(event)
 
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
-        if self.dragging_playhead:
+        if self.parameter_editing:
+            # Handle parameter editing release
+            self._handle_parameter_release(event)
+        elif self.dragging_playhead:
             self.dragging_playhead = False
             
             # Sync playhead position with playback engine
@@ -470,9 +533,9 @@ class PianoRollWidget(QWidget):
             
             # Play notes at the new playhead position
             self._play_notes_at_playhead()
-        elif self.edit_mode_manager.is_note_input_mode():
+        elif self.parameter_edit_mode == "none" and self.edit_mode_manager.is_note_input_mode():
             self._handle_note_input_mode_release(event)
-        elif self.edit_mode_manager.is_selection_mode():
+        elif self.parameter_edit_mode == "none" and self.edit_mode_manager.is_selection_mode():
             self._handle_selection_mode_release(event)
 
         super().mouseReleaseEvent(event)
@@ -504,6 +567,23 @@ class PianoRollWidget(QWidget):
         self._delete_selected_notes_with_command()
 
     def keyPressEvent(self, event):
+        # In parameter editing mode, disable most keyboard shortcuts except mode switching
+        if self.parameter_edit_mode != "none":
+            # Allow Tab key for mode switching even in parameter editing mode
+            if event.key() == Qt.Key_Tab:
+                self.edit_mode_manager.toggle_mode()
+                self.update()
+            # Allow Escape to exit parameter editing mode  
+            elif event.key() == Qt.Key_Escape:
+                self.set_parameter_edit_mode("none")
+                # Notify main window to update toolbar combo box
+                main_window = self.parent()
+                while main_window and not hasattr(main_window, 'parameter_combo'):
+                    main_window = main_window.parent()
+                if main_window and hasattr(main_window, 'parameter_combo'):
+                    main_window.parameter_combo.setCurrentIndex(0)
+            return
+        
         # Delete selected notes
         if event.key() == Qt.Key_Delete or event.key() == Qt.Key_Backspace:
             self._delete_selected_notes_with_command()
@@ -909,11 +989,16 @@ class PianoRollWidget(QWidget):
         font.setBold(True)
         painter.setFont(font)
         
-        mode_text = self.edit_mode_manager.get_mode_display_name()
-        mode_color = QColor("#50c7e3") if self.edit_mode_manager.is_selection_mode() else QColor("#f39c12")
+        # Show parameter editing mode if active, otherwise show normal edit mode
+        if self.parameter_edit_mode != "none":
+            mode_text = f"Parameter Edit: {self.parameter_edit_mode.capitalize()} (ESC to exit)"
+            mode_color = QColor("#e74c3c")  # Red for parameter editing
+        else:
+            mode_text = self.edit_mode_manager.get_mode_display_name()
+            mode_color = QColor("#50c7e3") if self.edit_mode_manager.is_selection_mode() else QColor("#f39c12")
         
         painter.setPen(mode_color)
-        painter.drawText(width - 200, 25, mode_text)
+        painter.drawText(width - 350, 25, mode_text)
         
         # Draw description
         font.setPointSize(10)
@@ -1580,6 +1665,969 @@ class PianoRollWidget(QWidget):
         painter.drawLine(int(playhead_x), 0, int(playhead_x), height)
         
         painter.restore()
+    
+    def _draw_parameter_layer(self, painter: QPainter, width: int, height: int, grid_start_x: int):
+        """Draw the parameter automation layer"""
+        if not self.midi_project:
+            return
+        
+        painter.save()
+        
+        # Draw dark overlay to indicate parameter editing mode
+        overlay_bg = QColor(0, 0, 0, 40)  # Dark semi-transparent overlay
+        painter.fillRect(grid_start_x, 0, width - grid_start_x, height, overlay_bg)
+        
+        # Get active track
+        from src.track_manager import get_track_manager
+        track_manager = get_track_manager()
+        if not track_manager:
+            painter.restore()
+            return
+        
+        active_track_index = track_manager.get_active_track_index()
+        if active_track_index < 0 or active_track_index >= len(self.midi_project.tracks):
+            painter.restore()
+            return
+        
+        active_track = self.midi_project.tracks[active_track_index]
+        
+        # Get parameter color
+        parameter_color = QColor(self.parameter_colors.get(self.parameter_edit_mode, "#FFFFFF"))
+        
+        # Draw parameter range indicators first
+        self._draw_parameter_range_indicators(painter, parameter_color, grid_start_x, height)
+        
+        if self.parameter_edit_mode == "velocity":
+            self._draw_velocity_automation(painter, active_track, parameter_color, grid_start_x, height)
+        elif self.parameter_edit_mode == "volume":
+            self._draw_volume_automation(painter, active_track, parameter_color, grid_start_x, height)
+        elif self.parameter_edit_mode == "expression":
+            self._draw_expression_automation(painter, active_track, parameter_color, grid_start_x, height)
+        
+        # Draw parameter value indicators
+        self._draw_parameter_value_indicators(painter, active_track, parameter_color, grid_start_x, height)
+        
+        painter.restore()
+    
+    def _draw_parameter_range_indicators(self, painter: QPainter, color: QColor, grid_start_x: int, height: int):
+        """Draw parameter range indicators (0-127 lines and labels)"""
+        # Parameter editing area: 20% to 80% of height
+        param_top = height * 0.2
+        param_bottom = height * 0.8
+        
+        # Draw subtle range lines
+        range_color = QColor(255, 255, 255, 60)  # Light subtle lines
+        painter.setPen(QPen(range_color, 1, Qt.DotLine))
+        
+        # Top line (127)
+        painter.drawLine(grid_start_x, int(param_top), self.width(), int(param_top))
+        
+        # Bottom line (0)
+        painter.drawLine(grid_start_x, int(param_bottom), self.width(), int(param_bottom))
+        
+        # Draw labels with better visibility
+        label_color = QColor(255, 255, 255, 200)  # White labels
+        painter.setPen(QPen(label_color))
+        painter.setFont(QFont("Arial", 12, QFont.Bold))  # Larger, bold font
+        
+        # Labels on the left side with background
+        label_x = grid_start_x - 35
+        
+        # Draw label backgrounds for better readability
+        bg_color = QColor(0, 0, 0, 120)
+        painter.fillRect(label_x - 5, int(param_top) - 8, 30, 16, bg_color)
+        painter.fillRect(label_x - 5, int(param_bottom) - 8, 30, 16, bg_color)
+        
+        painter.drawText(label_x, int(param_top) + 5, "127")
+        painter.drawText(label_x + 5, int(param_bottom) + 5, "0")
+        
+        # Parameter name label with background
+        param_name = self.parameter_edit_mode.capitalize()
+        title_text = f"{param_name} (0-127)"
+        title_width = painter.fontMetrics().horizontalAdvance(title_text)
+        painter.fillRect(grid_start_x + 5, int(param_top) - 20, title_width + 10, 18, bg_color)
+        painter.drawText(grid_start_x + 10, int(param_top) - 5, title_text)
+    
+    def _draw_parameter_value_indicators(self, painter: QPainter, track, color: QColor, grid_start_x: int, height: int):
+        """Draw current parameter value indicators"""
+        if not track or not track.notes:
+            return
+        
+        # Find hovered or recently edited note to show value for
+        from src.track_manager import get_track_manager
+        track_manager = get_track_manager()
+        if not track_manager:
+            return
+        
+        # Show values for visible notes only
+        value_color = QColor(255, 255, 255, 255)  # Bright white
+        painter.setPen(QPen(value_color))
+        painter.setFont(QFont("Arial", 11, QFont.Bold))  # Larger, bold font
+        
+        for note in track.notes:
+            note_start_x = self._tick_to_x(note.start_tick) + grid_start_x
+            note_end_x = self._tick_to_x(note.end_tick) + grid_start_x
+            
+            # Skip notes outside visible area
+            if note_end_x < grid_start_x or note_start_x > self.width():
+                continue
+            
+            # Get current parameter value
+            if self.parameter_edit_mode == "velocity":
+                current_value = note.velocity
+                value_y = self._velocity_to_y(current_value, height)
+            elif self.parameter_edit_mode == "volume":
+                current_value = note.volume
+                value_y = self._cc_to_y(current_value, height)
+            elif self.parameter_edit_mode == "expression":
+                current_value = note.expression
+                value_y = self._cc_to_y(current_value, height)
+            else:
+                continue
+            
+            # Draw value label with background for better readability
+            value_text = str(current_value)
+            text_width = painter.fontMetrics().horizontalAdvance(value_text)
+            text_height = painter.fontMetrics().height()
+            
+            # Position label to the right of the bar
+            label_x = int(note_start_x) + 20
+            label_y = int(value_y) + 4
+            
+            # Draw background
+            bg_color = QColor(0, 0, 0, 150)
+            painter.fillRect(label_x - 2, label_y - text_height + 2, text_width + 4, text_height, bg_color)
+            
+            # Draw text
+            painter.drawText(label_x, label_y, value_text)
+    
+    def _draw_velocity_automation(self, painter: QPainter, track, color: QColor, grid_start_x: int, height: int):
+        """Draw velocity bars for the track (simplified - no automation)"""
+        # Set up semi-transparent overlay
+        overlay_color = QColor(color)
+        overlay_color.setAlpha(120)  # Semi-transparent
+        painter.setBrush(QBrush(overlay_color))
+        
+        line_color = QColor(color)
+        line_color.setAlpha(200)  # More opaque for lines
+        painter.setPen(QPen(line_color, 2))
+        
+        # Draw velocity bars for each note
+        for note in track.notes:
+            note_start_x = self._tick_to_x(note.start_tick) + grid_start_x
+            note_end_x = self._tick_to_x(note.end_tick) + grid_start_x
+            note_width = note_end_x - note_start_x
+            
+            # Skip notes that are outside visible area
+            if note_end_x < grid_start_x or note_start_x > self.width():
+                continue
+            
+            # Draw single unified velocity bar
+            velocity_y = self._velocity_to_y(note.velocity, height)
+            bar_bottom = height * 0.8
+            bar_height = bar_bottom - velocity_y  # Calculate height properly (bottom - top)
+            
+            # Draw velocity bar - make it prominent for easy editing
+            bar_width = max(8, min(16, int(note_width * 0.3)))  # Wider bars for easier clicking
+            
+            # Draw single bar from velocity level down to bottom
+            bar_color = QColor(color)
+            bar_color.setAlpha(180)  # More opaque for better visibility
+            painter.setBrush(QBrush(bar_color))
+            painter.fillRect(int(note_start_x), int(velocity_y), bar_width, int(bar_height), bar_color)
+    
+    def _draw_volume_automation(self, painter: QPainter, track, color: QColor, grid_start_x: int, height: int):
+        """Draw volume bars for the track (simplified - same as velocity)"""
+        # Set up semi-transparent overlay
+        overlay_color = QColor(color)
+        overlay_color.setAlpha(180)  # More opaque for better visibility
+        painter.setBrush(QBrush(overlay_color))
+        
+        # Draw volume bars for each note
+        for note in track.notes:
+            note_start_x = self._tick_to_x(note.start_tick) + grid_start_x
+            note_end_x = self._tick_to_x(note.end_tick) + grid_start_x
+            note_width = note_end_x - note_start_x
+            
+            # Skip notes that are outside visible area
+            if note_end_x < grid_start_x or note_start_x > self.width():
+                continue
+            
+            # Draw single unified volume bar
+            volume_y = self._cc_to_y(note.volume, height)
+            bar_bottom = height * 0.8
+            bar_height = bar_bottom - volume_y  # Calculate height properly (bottom - top)
+            
+            # Draw volume bar - make it prominent for easy editing
+            bar_width = max(8, min(16, int(note_width * 0.3)))  # Wider bars for easier clicking
+            
+            # Draw single bar from volume level down to bottom
+            bar_color = QColor(color)
+            bar_color.setAlpha(180)  # More opaque for better visibility
+            painter.setBrush(QBrush(bar_color))
+            painter.fillRect(int(note_start_x), int(volume_y), bar_width, int(bar_height), bar_color)
+    
+    def _draw_expression_automation(self, painter: QPainter, track, color: QColor, grid_start_x: int, height: int):
+        """Draw expression bars for the track (simplified - same as velocity)"""
+        # Set up semi-transparent overlay
+        overlay_color = QColor(color)
+        overlay_color.setAlpha(180)  # More opaque for better visibility
+        painter.setBrush(QBrush(overlay_color))
+        
+        # Draw expression bars for each note
+        for note in track.notes:
+            note_start_x = self._tick_to_x(note.start_tick) + grid_start_x
+            note_end_x = self._tick_to_x(note.end_tick) + grid_start_x
+            note_width = note_end_x - note_start_x
+            
+            # Skip notes that are outside visible area
+            if note_end_x < grid_start_x or note_start_x > self.width():
+                continue
+            
+            # Draw single unified expression bar
+            expression_y = self._cc_to_y(note.expression, height)
+            bar_bottom = height * 0.8
+            bar_height = bar_bottom - expression_y  # Calculate height properly (bottom - top)
+            
+            # Draw expression bar - make it prominent for easy editing
+            bar_width = max(8, min(16, int(note_width * 0.3)))  # Wider bars for easier clicking
+            
+            # Draw single bar from expression level down to bottom
+            bar_color = QColor(color)
+            bar_color.setAlpha(180)  # More opaque for better visibility
+            painter.setBrush(QBrush(bar_color))
+            painter.fillRect(int(note_start_x), int(expression_y), bar_width, int(bar_height), bar_color)
+    
+    def _velocity_to_y(self, velocity: int, height: int) -> float:
+        """Convert velocity value (0-127) to y coordinate"""
+        # Velocity 0 = bottom 80% of height, Velocity 127 = top 20% of height
+        velocity_ratio = velocity / 127.0
+        y_range = height * 0.6  # Use 60% of height for velocity range
+        return height * 0.8 - (velocity_ratio * y_range)
+    
+    def _y_to_velocity(self, y: float, height: int) -> int:
+        """Convert y coordinate to velocity value (0-127)"""
+        # Inverse of _velocity_to_y
+        y_range = height * 0.6
+        velocity_ratio = (height * 0.8 - y) / y_range
+        velocity = int(round(velocity_ratio * 127))
+        return max(0, min(127, velocity))
+    
+    def _cc_to_y(self, cc_value: int, height: int) -> float:
+        """Convert CC value (0-127) to y coordinate"""
+        # CC 0 = bottom 80% of height, CC 127 = top 20% of height
+        cc_ratio = cc_value / 127.0
+        y_range = height * 0.6  # Use 60% of height for CC range
+        return height * 0.8 - (cc_ratio * y_range)
+    
+    def _y_to_cc(self, y: float, height: int) -> int:
+        """Convert y coordinate to CC value (0-127)"""
+        # Inverse of _cc_to_y
+        y_range = height * 0.6
+        cc_ratio = (height * 0.8 - y) / y_range
+        cc_value = int(round(cc_ratio * 127))
+        return max(0, min(127, cc_value))
+    
+    def _handle_parameter_editing_click(self, event, clicked_x: float, clicked_y: float, grid_start_x: int) -> bool:
+        """Handle mouse click in parameter editing mode"""
+        if not self.midi_project:
+            return False
+        
+        # Get active track
+        from src.track_manager import get_track_manager
+        track_manager = get_track_manager()
+        if not track_manager:
+            return False
+        
+        active_track_index = track_manager.get_active_track_index()
+        if active_track_index < 0 or active_track_index >= len(self.midi_project.tracks):
+            return False
+        
+        active_track = self.midi_project.tracks[active_track_index]
+        
+        if self.parameter_edit_mode == "velocity":
+            return self._handle_velocity_bar_editing_click(event, clicked_x, clicked_y, grid_start_x, active_track)
+        elif self.parameter_edit_mode == "volume":
+            return self._handle_volume_bar_editing_click(event, clicked_x, clicked_y, grid_start_x, active_track)
+        elif self.parameter_edit_mode == "expression":
+            return self._handle_expression_bar_editing_click(event, clicked_x, clicked_y, grid_start_x, active_track)
+        
+        return False
+    
+    def _handle_velocity_bar_editing_click(self, event, clicked_x: float, clicked_y: float, grid_start_x: int, track) -> bool:
+        """Handle velocity bar editing click - edit note velocity directly"""
+        clicked_velocity = self._y_to_velocity(clicked_y, self.height())
+        
+        # Find velocity bar at this position using precise collision detection
+        clicked_note = self._find_velocity_bar_at_position(clicked_x, clicked_y, grid_start_x, track)
+        if clicked_note:
+            # Start dragging this velocity bar
+            self.dragging_automation_point = (clicked_note, -1)
+            self.parameter_drag_start_pos = (clicked_x, clicked_y)
+            self.parameter_drag_start_value = clicked_note.velocity
+            self.parameter_editing = True
+            
+            # Also immediately set the new velocity
+            clicked_note.velocity = clicked_velocity
+            clicked_note.velocity_automation = None  # Clear automation when editing base velocity
+            self.update()
+            print(f"Started dragging velocity bar: {clicked_velocity}")
+            return True
+        
+        return False
+    
+    def _handle_volume_bar_editing_click(self, event, clicked_x: float, clicked_y: float, grid_start_x: int, track) -> bool:
+        """Handle volume bar editing click - edit note volume directly"""
+        clicked_volume = self._y_to_cc(clicked_y, self.height())
+        
+        # Find volume bar at this position using precise collision detection
+        clicked_note = self._find_volume_bar_at_position(clicked_x, clicked_y, grid_start_x, track)
+        if clicked_note:
+            # Start dragging this volume bar
+            self.dragging_automation_point = (clicked_note, -1)
+            self.parameter_drag_start_pos = (clicked_x, clicked_y)
+            self.parameter_drag_start_value = clicked_note.volume
+            self.parameter_editing = True
+            
+            # Also immediately set the new volume
+            clicked_note.volume = clicked_volume
+            clicked_note.volume_automation = None  # Clear automation when editing base volume
+            self.update()
+            print(f"Started dragging volume bar: {clicked_volume}")
+            return True
+        
+        return False
+    
+    def _handle_expression_bar_editing_click(self, event, clicked_x: float, clicked_y: float, grid_start_x: int, track) -> bool:
+        """Handle expression bar editing click - edit note expression directly"""
+        clicked_expression = self._y_to_cc(clicked_y, self.height())
+        
+        # Find expression bar at this position using precise collision detection
+        clicked_note = self._find_expression_bar_at_position(clicked_x, clicked_y, grid_start_x, track)
+        if clicked_note:
+            # Start dragging this expression bar
+            self.dragging_automation_point = (clicked_note, -1)
+            self.parameter_drag_start_pos = (clicked_x, clicked_y)
+            self.parameter_drag_start_value = clicked_note.expression
+            self.parameter_editing = True
+            
+            # Also immediately set the new expression
+            clicked_note.expression = clicked_expression
+            clicked_note.expression_automation = None  # Clear automation when editing base expression
+            self.update()
+            print(f"Started dragging expression bar: {clicked_expression}")
+            return True
+        
+        return False
+    
+    def _handle_velocity_editing_click(self, event, clicked_x: float, clicked_y: float, grid_start_x: int, track) -> bool:
+        """Handle velocity editing click"""
+        # Convert click position to tick and velocity
+        clicked_tick = self._x_to_tick(clicked_x - grid_start_x)
+        clicked_velocity = self._y_to_velocity(clicked_y, self.height())
+        
+        # First, check if clicking on an existing automation point
+        clicked_point = self._find_automation_point_at_position(clicked_x, clicked_y, grid_start_x, track)
+        if clicked_point:
+            note, point_index = clicked_point
+            self.dragging_automation_point = (note, point_index)
+            self.parameter_drag_start_pos = (clicked_x, clicked_y)
+            if point_index >= 0:
+                self.parameter_drag_start_value = note.velocity_automation[point_index].value
+            else:
+                self.parameter_drag_start_value = note.velocity
+            self.parameter_editing = True
+            print(f"Started dragging automation point: velocity={self.parameter_drag_start_value}")
+            return True
+        
+        # Check if clicking within a note to add automation point
+        for note in track.notes:
+            if note.start_tick <= clicked_tick <= note.end_tick:
+                # Calculate tick offset within the note
+                tick_offset = clicked_tick - note.start_tick
+                
+                # Add automation point
+                note.add_velocity_automation_point(tick_offset, clicked_velocity)
+                
+                # Start dragging the newly created point
+                if note.velocity_automation:
+                    # Find the point we just added
+                    for i, point in enumerate(note.velocity_automation):
+                        if point.tick_offset == tick_offset:
+                            self.dragging_automation_point = (note, i)
+                            self.parameter_drag_start_pos = (clicked_x, clicked_y)
+                            self.parameter_drag_start_value = clicked_velocity
+                            self.parameter_editing = True
+                            break
+                
+                self.update()  # Redraw to show new point
+                print(f"Added velocity automation point: tick_offset={tick_offset}, velocity={clicked_velocity}")
+                return True
+        
+        return False
+    
+    def _handle_volume_editing_click(self, event, clicked_x: float, clicked_y: float, grid_start_x: int, track) -> bool:
+        """Handle volume editing click"""
+        # Convert click position to tick and volume
+        clicked_tick = self._x_to_tick(clicked_x - grid_start_x)
+        clicked_volume = self._y_to_cc(clicked_y, self.height())
+        
+        # First, check if clicking on an existing automation point
+        clicked_point = self._find_volume_automation_point_at_position(clicked_x, clicked_y, grid_start_x, track)
+        if clicked_point:
+            note, point_index = clicked_point
+            self.dragging_automation_point = (note, point_index)
+            self.parameter_drag_start_pos = (clicked_x, clicked_y)
+            if point_index >= 0:
+                self.parameter_drag_start_value = note.volume_automation[point_index].value
+            else:
+                self.parameter_drag_start_value = note.volume
+            self.parameter_editing = True
+            print(f"Started dragging volume automation point: volume={self.parameter_drag_start_value}")
+            return True
+        
+        # Check if clicking within a note to add automation point
+        for note in track.notes:
+            if note.start_tick <= clicked_tick <= note.end_tick:
+                # Calculate tick offset within the note
+                tick_offset = clicked_tick - note.start_tick
+                
+                # Add automation point
+                note.add_volume_automation_point(tick_offset, clicked_volume)
+                
+                # Start dragging the newly created point
+                if note.volume_automation:
+                    # Find the point we just added
+                    for i, point in enumerate(note.volume_automation):
+                        if point.tick_offset == tick_offset:
+                            self.dragging_automation_point = (note, i)
+                            self.parameter_drag_start_pos = (clicked_x, clicked_y)
+                            self.parameter_drag_start_value = clicked_volume
+                            self.parameter_editing = True
+                            break
+                
+                self.update()  # Redraw to show new point
+                print(f"Added volume automation point: tick_offset={tick_offset}, volume={clicked_volume}")
+                return True
+        
+        return False
+    
+    def _handle_expression_editing_click(self, event, clicked_x: float, clicked_y: float, grid_start_x: int, track) -> bool:
+        """Handle expression editing click"""
+        # Convert click position to tick and expression
+        clicked_tick = self._x_to_tick(clicked_x - grid_start_x)
+        clicked_expression = self._y_to_cc(clicked_y, self.height())
+        
+        # First, check if clicking on an existing automation point
+        clicked_point = self._find_expression_automation_point_at_position(clicked_x, clicked_y, grid_start_x, track)
+        if clicked_point:
+            note, point_index = clicked_point
+            self.dragging_automation_point = (note, point_index)
+            self.parameter_drag_start_pos = (clicked_x, clicked_y)
+            if point_index >= 0:
+                self.parameter_drag_start_value = note.expression_automation[point_index].value
+            else:
+                self.parameter_drag_start_value = note.expression
+            self.parameter_editing = True
+            print(f"Started dragging expression automation point: expression={self.parameter_drag_start_value}")
+            return True
+        
+        # Check if clicking within a note to add automation point
+        for note in track.notes:
+            if note.start_tick <= clicked_tick <= note.end_tick:
+                # Calculate tick offset within the note
+                tick_offset = clicked_tick - note.start_tick
+                
+                # Add automation point
+                note.add_expression_automation_point(tick_offset, clicked_expression)
+                
+                # Start dragging the newly created point
+                if note.expression_automation:
+                    # Find the point we just added
+                    for i, point in enumerate(note.expression_automation):
+                        if point.tick_offset == tick_offset:
+                            self.dragging_automation_point = (note, i)
+                            self.parameter_drag_start_pos = (clicked_x, clicked_y)
+                            self.parameter_drag_start_value = clicked_expression
+                            self.parameter_editing = True
+                            break
+                
+                self.update()  # Redraw to show new point
+                print(f"Added expression automation point: tick_offset={tick_offset}, expression={clicked_expression}")
+                return True
+        
+        return False
+    
+    def _find_automation_point_at_position(self, clicked_x: float, clicked_y: float, grid_start_x: int, track) -> tuple:
+        """Find velocity bar at click position for simplified velocity editing"""
+        for note in track.notes:
+            note_start_x = self._tick_to_x(note.start_tick) + grid_start_x
+            note_end_x = self._tick_to_x(note.end_tick) + grid_start_x
+            note_width = note_end_x - note_start_x
+            
+            # Check if click is within velocity bar area (wider tolerance for easier clicking)
+            bar_width = max(8, min(16, int(note_width * 0.3)))
+            if (note_start_x <= clicked_x <= note_start_x + bar_width):
+                return (note, -1)  # -1 indicates velocity bar editing
+        
+        return None
+    
+    def _find_velocity_bar_at_position(self, clicked_x: float, clicked_y: float, grid_start_x: int, track):
+        """Find velocity bar at click position with generous collision detection"""
+        tolerance = 10  # Extra pixels for easier clicking
+        
+        for note in track.notes:
+            note_start_x = self._tick_to_x(note.start_tick) + grid_start_x
+            note_end_x = self._tick_to_x(note.end_tick) + grid_start_x
+            note_width = note_end_x - note_start_x
+            
+            # Skip notes outside visible area
+            if note_end_x < grid_start_x or note_start_x > self.width():
+                continue
+            
+            # Calculate bar dimensions (exactly matching drawing code)
+            bar_width = max(8, min(16, int(note_width * 0.3)))
+            velocity_y = self._velocity_to_y(note.velocity, self.height())
+            bar_bottom = self.height() * 0.8
+            
+            # Expanded click area for easier interaction
+            click_left = note_start_x - tolerance
+            click_right = note_start_x + bar_width + tolerance
+            click_top = velocity_y - tolerance
+            click_bottom = bar_bottom + tolerance
+            
+            # Check if click is within the expanded area
+            if (click_left <= clicked_x <= click_right and 
+                click_top <= clicked_y <= click_bottom):
+                return note
+        
+        return None
+    
+    def _find_volume_bar_at_position(self, clicked_x: float, clicked_y: float, grid_start_x: int, track):
+        """Find volume bar at click position with generous collision detection"""
+        tolerance = 10  # Extra pixels for easier clicking
+        
+        for note in track.notes:
+            note_start_x = self._tick_to_x(note.start_tick) + grid_start_x
+            note_end_x = self._tick_to_x(note.end_tick) + grid_start_x
+            note_width = note_end_x - note_start_x
+            
+            # Skip notes outside visible area
+            if note_end_x < grid_start_x or note_start_x > self.width():
+                continue
+            
+            # Calculate bar dimensions (exactly matching drawing code)
+            bar_width = max(8, min(16, int(note_width * 0.3)))
+            volume_y = self._cc_to_y(note.volume, self.height())
+            bar_bottom = self.height() * 0.8
+            
+            # Expanded click area for easier interaction
+            click_left = note_start_x - tolerance
+            click_right = note_start_x + bar_width + tolerance
+            click_top = volume_y - tolerance
+            click_bottom = bar_bottom + tolerance
+            
+            # Check if click is within the expanded area
+            if (click_left <= clicked_x <= click_right and 
+                click_top <= clicked_y <= click_bottom):
+                return note
+        
+        return None
+    
+    def _find_expression_bar_at_position(self, clicked_x: float, clicked_y: float, grid_start_x: int, track):
+        """Find expression bar at click position with generous collision detection"""
+        tolerance = 10  # Extra pixels for easier clicking
+        
+        for note in track.notes:
+            note_start_x = self._tick_to_x(note.start_tick) + grid_start_x
+            note_end_x = self._tick_to_x(note.end_tick) + grid_start_x
+            note_width = note_end_x - note_start_x
+            
+            # Skip notes outside visible area
+            if note_end_x < grid_start_x or note_start_x > self.width():
+                continue
+            
+            # Calculate bar dimensions (exactly matching drawing code)
+            bar_width = max(8, min(16, int(note_width * 0.3)))
+            expression_y = self._cc_to_y(note.expression, self.height())
+            bar_bottom = self.height() * 0.8
+            
+            # Expanded click area for easier interaction
+            click_left = note_start_x - tolerance
+            click_right = note_start_x + bar_width + tolerance
+            click_top = expression_y - tolerance
+            click_bottom = bar_bottom + tolerance
+            
+            # Check if click is within the expanded area
+            if (click_left <= clicked_x <= click_right and 
+                click_top <= clicked_y <= click_bottom):
+                return note
+        
+        return None
+    
+    def _find_volume_automation_point_at_position(self, clicked_x: float, clicked_y: float, grid_start_x: int, track) -> tuple:
+        """Find volume automation point at click position, returns (note, point_index) or None"""
+        click_tolerance = 8  # pixels
+        
+        for note in track.notes:
+            note_start_x = self._tick_to_x(note.start_tick) + grid_start_x
+            
+            # Check note's base volume point (at note start)
+            volume_y = self._cc_to_y(note.volume, self.height())
+            if (abs(clicked_x - note_start_x) <= click_tolerance and 
+                abs(clicked_y - volume_y) <= click_tolerance):
+                return (note, -1)  # -1 indicates base volume point
+            
+            # Check automation points
+            if note.volume_automation:
+                for i, auto_point in enumerate(note.volume_automation):
+                    point_tick = note.start_tick + auto_point.tick_offset
+                    point_x = self._tick_to_x(point_tick) + grid_start_x
+                    point_y = self._cc_to_y(auto_point.value, self.height())
+                    
+                    if (abs(clicked_x - point_x) <= click_tolerance and 
+                        abs(clicked_y - point_y) <= click_tolerance):
+                        return (note, i)
+        
+        return None
+    
+    def _find_expression_automation_point_at_position(self, clicked_x: float, clicked_y: float, grid_start_x: int, track) -> tuple:
+        """Find expression automation point at click position, returns (note, point_index) or None"""
+        click_tolerance = 8  # pixels
+        
+        for note in track.notes:
+            note_start_x = self._tick_to_x(note.start_tick) + grid_start_x
+            
+            # Check note's base expression point (at note start)
+            expression_y = self._cc_to_y(note.expression, self.height())
+            if (abs(clicked_x - note_start_x) <= click_tolerance and 
+                abs(clicked_y - expression_y) <= click_tolerance):
+                return (note, -1)  # -1 indicates base expression point
+            
+            # Check automation points
+            if note.expression_automation:
+                for i, auto_point in enumerate(note.expression_automation):
+                    point_tick = note.start_tick + auto_point.tick_offset
+                    point_x = self._tick_to_x(point_tick) + grid_start_x
+                    point_y = self._cc_to_y(auto_point.value, self.height())
+                    
+                    if (abs(clicked_x - point_x) <= click_tolerance and 
+                        abs(clicked_y - point_y) <= click_tolerance):
+                        return (note, i)
+        
+        return None
+    
+    def _handle_parameter_drag(self, event):
+        """Handle dragging of automation points"""
+        if not self.dragging_automation_point or not self.parameter_drag_start_pos:
+            return
+        
+        current_x = event.position().x()
+        current_y = event.position().y()
+        
+        note, point_index = self.dragging_automation_point
+        
+        if self.parameter_edit_mode == "velocity":
+            # Calculate new velocity based on Y movement
+            new_value = self._y_to_velocity(current_y, self.height())
+            
+            # For velocity bar editing, always edit base velocity and clear automation
+            note.velocity = new_value
+            note.velocity_automation = None  # Clear automation when editing base velocity
+            print(f"Updated note velocity to {new_value}")
+        
+        elif self.parameter_edit_mode == "volume":
+            # Calculate new volume based on Y movement
+            new_value = self._y_to_cc(current_y, self.height())
+            
+            if point_index == -1:
+                # Dragging base volume of note
+                note.volume = new_value
+                print(f"Updated note base volume to {new_value}")
+            elif point_index >= 0 and note.volume_automation:
+                # Dragging automation point
+                if point_index < len(note.volume_automation):
+                    note.volume_automation[point_index].value = new_value
+                    print(f"Updated automation point volume to {new_value}")
+        
+        elif self.parameter_edit_mode == "expression":
+            # Calculate new expression based on Y movement
+            new_value = self._y_to_cc(current_y, self.height())
+            
+            if point_index == -1:
+                # Dragging base expression of note
+                note.expression = new_value
+                print(f"Updated note base expression to {new_value}")
+            elif point_index >= 0 and note.expression_automation:
+                # Dragging automation point
+                if point_index < len(note.expression_automation):
+                    note.expression_automation[point_index].value = new_value
+                    print(f"Updated automation point expression to {new_value}")
+        
+        self.update()
+    
+    def _handle_parameter_swipe(self, event):
+        """Handle trackpad swiping for smooth parameter drawing"""
+        if not self.midi_project:
+            return
+        
+        current_x = event.position().x()
+        current_y = event.position().y()
+        
+        # Only process if mouse is pressed (trackpad contact)
+        if not (event.buttons() & Qt.LeftButton):
+            self.last_parameter_edit_pos = None
+            return
+        
+        grid_start_x = self.piano_width if self.show_piano_keyboard else 0
+        if current_x < grid_start_x:
+            return
+        
+        # Get active track
+        from src.track_manager import get_track_manager
+        track_manager = get_track_manager()
+        if not track_manager:
+            return
+        
+        active_track_index = track_manager.get_active_track_index()
+        if active_track_index < 0 or active_track_index >= len(self.midi_project.tracks):
+            return
+        
+        active_track = self.midi_project.tracks[active_track_index]
+        
+        # Convert position to tick and parameter value
+        current_tick = self._x_to_tick(current_x - grid_start_x)
+        
+        if self.parameter_edit_mode == "velocity":
+            current_value = self._y_to_velocity(current_y, self.height())
+            # For velocity bar editing, edit note velocity directly
+            self._set_velocity_at_tick_if_in_note(active_track, current_tick, current_value)
+        else:  # volume or expression
+            current_value = self._y_to_cc(current_y, self.height())
+            # For CC parameters, allow editing across note boundaries for continuous control
+            if self.last_parameter_edit_pos:
+                last_x, last_y = self.last_parameter_edit_pos
+                last_tick = self._x_to_tick(last_x - grid_start_x)
+                
+                # Interpolate between last and current position
+                self._draw_parameter_line(active_track, last_tick, current_tick, last_y, current_y)
+            else:
+                # First point, just add it
+                self._add_parameter_point_at_tick(active_track, current_tick, current_value)
+        
+        self.last_parameter_edit_pos = (current_x, current_y)
+        self.update()
+    
+    def _handle_parameter_release(self, event):
+        """Handle mouse release for parameter editing"""
+        self.parameter_editing = False
+        self.dragging_automation_point = None
+        self.parameter_drag_start_pos = None
+        self.parameter_drag_start_value = None
+        self.last_parameter_edit_pos = None
+        print("Parameter editing released")
+    
+    def _draw_parameter_line(self, track, start_tick: int, end_tick: int, start_y: float, end_y: float):
+        """Draw a smooth line of automation points between two positions"""
+        if start_tick == end_tick:
+            return
+        
+        # Ensure start < end
+        if start_tick > end_tick:
+            start_tick, end_tick = end_tick, start_tick
+            start_y, end_y = end_y, start_y
+        
+        # Calculate step size based on pixel distance
+        tick_range = end_tick - start_tick
+        steps = max(1, tick_range // 30)  # One point every 30 ticks approximately
+        
+        for i in range(steps + 1):
+            ratio = i / steps if steps > 0 else 0
+            interpolated_tick = start_tick + ratio * tick_range
+            interpolated_y = start_y + ratio * (end_y - start_y)
+            if self.parameter_edit_mode == "velocity":
+                interpolated_value = self._y_to_velocity(interpolated_y, self.height())
+            else:  # volume or expression
+                interpolated_value = self._y_to_cc(interpolated_y, self.height())
+            
+            self._add_parameter_point_at_tick(track, interpolated_tick, interpolated_value)
+    
+    def _add_parameter_point_at_tick(self, track, tick: int, value: int):
+        """Add parameter point at specific tick position"""
+        # Find note that contains this tick
+        for note in track.notes:
+            if note.start_tick <= tick <= note.end_tick:
+                tick_offset = tick - note.start_tick
+                
+                if self.parameter_edit_mode == "velocity":
+                    note.add_velocity_automation_point(tick_offset, value)
+                elif self.parameter_edit_mode == "volume":
+                    note.add_volume_automation_point(tick_offset, value)
+                elif self.parameter_edit_mode == "expression":
+                    note.add_expression_automation_point(tick_offset, value)
+                break
+    
+    def _add_velocity_point_at_tick_if_in_note(self, track, tick: int, velocity: int):
+        """Add velocity point only if tick is within an existing note"""
+        for note in track.notes:
+            if note.start_tick <= tick <= note.end_tick:
+                tick_offset = tick - note.start_tick
+                note.add_velocity_automation_point(tick_offset, velocity)
+                break  # Only add to one note per tick
+    
+    def _set_velocity_at_tick_if_in_note(self, track, tick: int, velocity: int):
+        """Set note velocity directly if tick is within an existing note"""
+        for note in track.notes:
+            if note.start_tick <= tick <= note.end_tick:
+                note.velocity = velocity
+                note.velocity_automation = None  # Clear automation when editing base velocity
+                break  # Only edit one note per tick
+    
+    def _handle_parameter_right_click(self, clicked_x: float, clicked_y: float, grid_start_x: int) -> bool:
+        """Handle right-click in parameter editing mode for deleting points"""
+        if not self.midi_project:
+            return False
+        
+        # Get active track
+        from src.track_manager import get_track_manager
+        track_manager = get_track_manager()
+        if not track_manager:
+            return False
+        
+        active_track_index = track_manager.get_active_track_index()
+        if active_track_index < 0 or active_track_index >= len(self.midi_project.tracks):
+            return False
+        
+        active_track = self.midi_project.tracks[active_track_index]
+        
+        if self.parameter_edit_mode == "velocity":
+            return self._handle_velocity_bar_right_click(clicked_x, clicked_y, grid_start_x, active_track)
+        elif self.parameter_edit_mode == "volume":
+            return self._handle_volume_bar_right_click(clicked_x, clicked_y, grid_start_x, active_track)
+        elif self.parameter_edit_mode == "expression":
+            return self._handle_expression_bar_right_click(clicked_x, clicked_y, grid_start_x, active_track)
+        
+        return False
+    
+    def _handle_velocity_bar_right_click(self, clicked_x: float, clicked_y: float, grid_start_x: int, track) -> bool:
+        """Handle right-click for velocity bar editing - reset to default"""
+        # Find velocity bar at this position using precise collision detection
+        clicked_note = self._find_velocity_bar_at_position(clicked_x, clicked_y, grid_start_x, track)
+        if clicked_note:
+            clicked_note.velocity = 100  # Reset to default velocity
+            clicked_note.velocity_automation = None  # Clear any automation
+            self.update()
+            print(f"Reset note velocity to default (100)")
+            return True
+        
+        return False
+    
+    def _handle_volume_bar_right_click(self, clicked_x: float, clicked_y: float, grid_start_x: int, track) -> bool:
+        """Handle right-click for volume bar editing - reset to default"""
+        # Find volume bar at this position using precise collision detection
+        clicked_note = self._find_volume_bar_at_position(clicked_x, clicked_y, grid_start_x, track)
+        if clicked_note:
+            clicked_note.volume = 100  # Reset to default volume
+            clicked_note.volume_automation = None  # Clear any automation
+            self.update()
+            print(f"Reset note volume to default (100)")
+            return True
+        
+        return False
+    
+    def _handle_expression_bar_right_click(self, clicked_x: float, clicked_y: float, grid_start_x: int, track) -> bool:
+        """Handle right-click for expression bar editing - reset to default"""
+        # Find expression bar at this position using precise collision detection
+        clicked_note = self._find_expression_bar_at_position(clicked_x, clicked_y, grid_start_x, track)
+        if clicked_note:
+            clicked_note.expression = 127  # Reset to default expression
+            clicked_note.expression_automation = None  # Clear any automation
+            self.update()
+            print(f"Reset note expression to default (127)")
+            return True
+        
+        return False
+    
+    def _handle_velocity_right_click(self, clicked_x: float, clicked_y: float, grid_start_x: int, track) -> bool:
+        """Handle right-click for velocity editing - delete automation points"""
+        # Find automation point at click position
+        clicked_point = self._find_automation_point_at_position(clicked_x, clicked_y, grid_start_x, track)
+        if not clicked_point:
+            return False
+        
+        note, point_index = clicked_point
+        
+        if point_index == -1:
+            # Right-clicked on base velocity point - reset to default
+            note.velocity = 100  # Reset to default velocity
+            note.velocity_automation = None  # Clear all automation
+            print(f"Reset note velocity to default (100) and cleared automation")
+        elif point_index >= 0 and note.velocity_automation:
+            # Right-clicked on automation point - delete it
+            if point_index < len(note.velocity_automation):
+                deleted_point = note.velocity_automation.pop(point_index)
+                print(f"Deleted automation point: tick_offset={deleted_point.tick_offset}, value={deleted_point.value}")
+                
+                # Clear automation list if empty
+                if not note.velocity_automation:
+                    note.velocity_automation = None
+        
+        self.update()
+        return True
+    
+    def _handle_volume_right_click(self, clicked_x: float, clicked_y: float, grid_start_x: int, track) -> bool:
+        """Handle right-click for volume editing - delete automation points"""
+        # Find automation point at click position
+        clicked_point = self._find_volume_automation_point_at_position(clicked_x, clicked_y, grid_start_x, track)
+        if not clicked_point:
+            return False
+        
+        note, point_index = clicked_point
+        
+        if point_index == -1:
+            # Right-clicked on base volume point - reset to default
+            note.volume = 100  # Reset to default volume
+            note.volume_automation = None  # Clear all automation
+            print(f"Reset note volume to default (100) and cleared automation")
+        elif point_index >= 0 and note.volume_automation:
+            # Right-clicked on automation point - delete it
+            if point_index < len(note.volume_automation):
+                deleted_point = note.volume_automation.pop(point_index)
+                print(f"Deleted volume automation point: tick_offset={deleted_point.tick_offset}, value={deleted_point.value}")
+                
+                # Clear automation list if empty
+                if not note.volume_automation:
+                    note.volume_automation = None
+        
+        self.update()
+        return True
+    
+    def _handle_expression_right_click(self, clicked_x: float, clicked_y: float, grid_start_x: int, track) -> bool:
+        """Handle right-click for expression editing - delete automation points"""
+        # Find automation point at click position
+        clicked_point = self._find_expression_automation_point_at_position(clicked_x, clicked_y, grid_start_x, track)
+        if not clicked_point:
+            return False
+        
+        note, point_index = clicked_point
+        
+        if point_index == -1:
+            # Right-clicked on base expression point - reset to default
+            note.expression = 127  # Reset to default expression
+            note.expression_automation = None  # Clear all automation
+            print(f"Reset note expression to default (127) and cleared automation")
+        elif point_index >= 0 and note.expression_automation:
+            # Right-clicked on automation point - delete it
+            if point_index < len(note.expression_automation):
+                deleted_point = note.expression_automation.pop(point_index)
+                print(f"Deleted expression automation point: tick_offset={deleted_point.tick_offset}, value={deleted_point.value}")
+                
+                # Clear automation list if empty
+                if not note.expression_automation:
+                    note.expression_automation = None
+        
+        self.update()
+        return True
     
     def _play_selected_notes_as_chord(self):
         """Play selected notes as a chord"""

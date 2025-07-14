@@ -1,6 +1,6 @@
 
 from PySide6.QtWidgets import (QMainWindow, QFileDialog, QWidget, QHBoxLayout, QToolBar, 
-                              QScrollArea, QVBoxLayout, QScrollBar, QDockWidget, QMessageBox, QDialog, QApplication)
+                              QScrollArea, QVBoxLayout, QScrollBar, QDockWidget, QMessageBox, QDialog, QApplication, QComboBox, QLabel)
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtCore import Qt, QTimer
 from src.ui.piano_roll_widget import PianoRollWidget
@@ -927,6 +927,18 @@ class PyDominoMainWindow(QMainWindow):
         self.playback_info_widget = CompactPlaybackInfoWidget()
         music_toolbar.addWidget(self.playback_info_widget)
         
+        music_toolbar.addWidget(ToolbarSeparator())
+        
+        # Parameter editing mode selector
+        parameter_label = QLabel("Parameter:")
+        music_toolbar.addWidget(parameter_label)
+        
+        self.parameter_combo = QComboBox()
+        self.parameter_combo.addItems(["None", "Velocity", "Volume (CC7)", "Expression (CC11)"])
+        self.parameter_combo.setToolTip("Select parameter to edit graphically on piano roll")
+        self.parameter_combo.currentTextChanged.connect(self._on_parameter_mode_changed)
+        music_toolbar.addWidget(self.parameter_combo)
+        
         # Add spacer to push everything to the left
         from PySide6.QtWidgets import QWidget as SpacerWidget
         from PySide6.QtWidgets import QSizePolicy
@@ -999,6 +1011,20 @@ class PyDominoMainWindow(QMainWindow):
             self.measure_bar.update()
         
         print(f"Time signature changed to {numerator}/{denominator}")
+    
+    def _on_parameter_mode_changed(self, selected_text: str):
+        """Handle parameter editing mode changes from toolbar dropdown"""
+        # Map display text to internal mode names
+        mode_mapping = {
+            "None": "none",
+            "Velocity": "velocity", 
+            "Volume (CC7)": "volume",
+            "Expression (CC11)": "expression"
+        }
+        
+        internal_mode = mode_mapping.get(selected_text, "none")
+        self.piano_roll.set_parameter_edit_mode(internal_mode)
+        print(f"Parameter editing mode changed to: {internal_mode}")
     
     def _on_grid_subdivision_changed(self, subdivision_type: str, ticks_per_subdivision: int):
         """Handle grid subdivision changes from subdivision widget"""
