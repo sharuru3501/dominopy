@@ -67,6 +67,33 @@ DEFAULT_TRACK_PROGRAMS = [
     1,   # Track 16 (Piano)
 ]
 
+# Game Boy soundfont specific programs (for Hiyameshi-DMG-STD and similar)
+GAMEBOY_TRACK_PROGRAMS = [
+    1,   # Pulse Wave 1
+    5,   # Pulse Wave 2  
+    9,   # Triangle Wave
+    119, # Noise Channel
+    17,  # Alternative Pulse 1
+    21,  # Alternative Pulse 2
+    25,  # Alternative Triangle
+    127, # Alternative Noise
+]
+
+def get_track_program_for_soundfont(track_index: int, soundfont_name: str) -> int:
+    """Get appropriate program number for track based on soundfont type"""
+    if "dmg" in soundfont_name.lower() or "gameboy" in soundfont_name.lower() or "hiyameshi" in soundfont_name.lower():
+        # Use Game Boy programs for chip tune soundfonts
+        if track_index < len(GAMEBOY_TRACK_PROGRAMS):
+            return GAMEBOY_TRACK_PROGRAMS[track_index]
+        else:
+            return 1  # Default to first program
+    else:
+        # Use standard programs for other soundfonts
+        if track_index < len(DEFAULT_TRACK_PROGRAMS):
+            return DEFAULT_TRACK_PROGRAMS[track_index]
+        else:
+            return 1  # Default to piano
+
 class TrackManager(QObject):
     """
     Manages multiple tracks, active track selection, and track operations

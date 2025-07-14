@@ -1685,9 +1685,10 @@ class PianoRollWidget(QWidget):
         
         # Get unified audio routing coordinator
         coordinator = get_audio_routing_coordinator()
-        if not coordinator:
-            print("PianoRoll: Audio routing coordinator not available for preview")
-            return False
+        if not coordinator or coordinator.state.value != "ready":
+            print(f"PianoRoll: Audio routing coordinator not ready (state: {coordinator.state.value if coordinator else 'None'})")
+            # Fallback to legacy audio systems
+            return self._play_track_preview_legacy(pitch, velocity)
         
         # Create a temporary MIDI note for preview
         from src.midi_data_model import MidiNote
@@ -1715,6 +1716,73 @@ class PianoRollWidget(QWidget):
         
         return False
     
+    def _play_track_preview_legacy(self, pitch: int, velocity: int = 100):
+        """Legacy fallback for track preview when coordinator is not available"""
+        from src.midi_routing import get_midi_routing_manager
+        from src.audio_system import get_audio_manager
+        from src.track_manager import get_track_manager
+        
+        print("PianoRoll: Using legacy preview fallback")
+        
+        # Get active track information
+        track_manager = get_track_manager()
+        if not track_manager:
+            return False
+        
+        active_track_index = track_manager.get_active_track_index()
+        
+        # Try MIDI routing first
+        midi_router = get_midi_routing_manager()
+        if midi_router:
+            midi_router.play_note(active_track_index, pitch, velocity)
+            self.active_preview_notes.add(pitch)
+            QTimer.singleShot(500, lambda: self._stop_track_preview_legacy(pitch))
+            print(f"PianoRoll: Legacy preview via MIDI routing - note {pitch} on track {active_track_index}")
+            return True
+        
+        # Fallback to direct audio manager
+        audio_manager = get_audio_manager()
+        if audio_manager:
+            result = audio_manager.play_note_immediate(pitch, velocity, active_track_index)
+            if result:
+                self.active_preview_notes.add(pitch)
+                QTimer.singleShot(500, lambda: self._stop_track_preview_legacy(pitch))
+                print(f"PianoRoll: Legacy preview via audio manager - note {pitch}")
+            return result
+        
+        return False
+    
+    def _stop_track_preview_legacy(self, pitch: int):
+        """Legacy fallback for stopping track preview"""
+        from src.midi_routing import get_midi_routing_manager
+        from src.audio_system import get_audio_manager
+        from src.track_manager import get_track_manager
+        
+        if pitch not in self.active_preview_notes:
+            return False
+        
+        track_manager = get_track_manager()
+        if not track_manager:
+            return False
+        
+        active_track_index = track_manager.get_active_track_index()
+        
+        # Try MIDI routing first
+        midi_router = get_midi_routing_manager()
+        if midi_router:
+            midi_router.stop_note(active_track_index, pitch)
+            self.active_preview_notes.discard(pitch)
+            return True
+        
+        # Fallback to direct audio manager  
+        audio_manager = get_audio_manager()
+        if audio_manager:
+            result = audio_manager.stop_note_immediate(pitch, active_track_index)
+            self.active_preview_notes.discard(pitch)
+            return result
+        
+        return False
+    
     def _stop_track_preview(self, pitch: int):
         """Stop a preview note using the current track's audio source via unified routing coordinator"""
         from src.audio_routing_coordinator import get_audio_routing_coordinator
@@ -1732,10 +1800,9 @@ class PianoRollWidget(QWidget):
         
         # Get unified audio routing coordinator
         coordinator = get_audio_routing_coordinator()
-        if not coordinator:
-            # Force remove from tracking if coordinator not available
-            self.active_preview_notes.discard(pitch)
-            return False
+        if not coordinator or coordinator.state.value != "ready":
+            # Use legacy fallback if coordinator not available
+            return self._stop_track_preview_legacy(pitch)
         
         # Create a temporary MIDI note for stopping
         from src.midi_data_model import MidiNote

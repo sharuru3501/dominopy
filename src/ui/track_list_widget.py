@@ -6,7 +6,7 @@ from typing import Optional, List
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                               QPushButton, QScrollArea, QFrame, QColorDialog,
                               QLineEdit, QMenu, QMessageBox)
-from PySide6.QtCore import Qt, Signal, QSize
+from PySide6.QtCore import Qt, Signal, QSize, QTimer
 from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QPixmap, QIcon, QFont
 
 from src.track_manager import TrackManager, get_track_manager
@@ -267,6 +267,9 @@ class TrackItemWidget(QFrame):
         from src.audio_source_manager import get_audio_source_manager
         from src.per_track_audio_router import get_per_track_audio_router
         
+        # Stop any currently playing notes to prevent pop noise
+        self._stop_all_notes_on_track()
+        
         audio_source_manager = get_audio_source_manager()
         if audio_source_manager:
             success = audio_source_manager.assign_source_to_track(self.track_index, source_id)
@@ -279,16 +282,55 @@ class TrackItemWidget(QFrame):
                     self.audio_source_label.setToolTip(f"Audio Source: {source.name}")
                     print(f"Track {self.track_index} audio source changed to: {source.name}")
                 
-                # Reinitialize per-track audio for this track
-                per_track_router = get_per_track_audio_router()
-                if per_track_router:
-                    router_success = per_track_router.initialize_track_audio(self.track_index)
-                    if router_success:
-                        print(f"✅ Track {self.track_index} audio routing initialized for {source.name}")
-                    else:
-                        print(f"❌ Failed to initialize audio routing for track {self.track_index}")
-                else:
-                    print("❌ Per-track router not available")
+                # Use a short delay to prevent audio artifacts before reinitializing
+                QTimer.singleShot(50, lambda: self._reinitialize_track_audio(source.name))
+            else:
+                print(f"❌ Failed to assign audio source {source_id} to track {self.track_index}")
+        else:
+            print("❌ Audio source manager not available")
+    
+    def _stop_all_notes_on_track(self):
+        """Stop all currently playing notes on this track to prevent pop noise"""
+        try:
+            from src.audio_routing_coordinator import get_audio_routing_coordinator
+            coordinator = get_audio_routing_coordinator()
+            if coordinator:
+                route = coordinator.track_routes.get(self.track_index)
+                if route:
+                    # Stop all active notes on this track's channel
+                    channel_state = coordinator.channel_states.get(route.channel)
+                    if channel_state and channel_state.active_notes:
+                        for pitch in list(channel_state.active_notes):
+                            from src.midi_data_model import MidiNote
+                            dummy_note = MidiNote(0, 480, pitch, 100, route.channel)
+                            coordinator.stop_note(self.track_index, dummy_note)
+                        print(f"Stopped {len(channel_state.active_notes)} active notes on track {self.track_index}")
+        except Exception as e:
+            print(f"Warning: Could not stop notes on track {self.track_index}: {e}")
+    
+    def _reinitialize_track_audio(self, source_name: str):
+        """Reinitialize track audio after a short delay"""
+        from src.per_track_audio_router import get_per_track_audio_router
+        from src.audio_routing_coordinator import get_audio_routing_coordinator
+        
+        # Try unified coordinator first
+        coordinator = get_audio_routing_coordinator()
+        if coordinator:
+            success = coordinator.setup_track_route(self.track_index)
+            if success:
+                print(f"✅ Track {self.track_index} audio routing reinitialized for {source_name}")
+                return
+        
+        # Fallback to per-track router
+        per_track_router = get_per_track_audio_router()
+        if per_track_router:
+            router_success = per_track_router.initialize_track_audio(self.track_index)
+            if router_success:
+                print(f"✅ Track {self.track_index} audio routing initialized for {source_name}")
+            else:
+                print(f"❌ Failed to initialize audio routing for track {self.track_index}")
+        else:
+            print("❌ Per-track router not available")
 
 class TrackListWidget(QWidget):
     """Main track list widget with scrolling support"""

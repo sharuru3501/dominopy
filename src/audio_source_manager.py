@@ -213,12 +213,11 @@ class AudioSourceManager(QObject):
         source = self.available_sources[source_id]
         if source.source_type == AudioSourceType.SOUNDFONT:
             try:
-                from src.track_manager import DEFAULT_TRACK_PROGRAMS
-                if track_index < len(DEFAULT_TRACK_PROGRAMS):
-                    # Update the source with track-specific program
-                    source.program = DEFAULT_TRACK_PROGRAMS[track_index]
-                    source.channel = track_index % 16
-                    print(f"Applied track {track_index} program {source.program} to soundfont {source.name}")
+                from src.track_manager import get_track_program_for_soundfont
+                # Update the source with track-specific program based on soundfont type
+                source.program = get_track_program_for_soundfont(track_index, source.name)
+                source.channel = track_index % 16
+                print(f"Applied track {track_index} program {source.program} to soundfont {source.name}")
             except ImportError:
                 pass
         
@@ -237,8 +236,8 @@ class AudioSourceManager(QObject):
                 except (ValueError, IndexError):
                     channel = track_index
                 
-                from src.track_manager import DEFAULT_TRACK_PROGRAMS
-                program = DEFAULT_TRACK_PROGRAMS[track_index] if track_index < len(DEFAULT_TRACK_PROGRAMS) else 1
+                from src.track_manager import get_track_program_for_soundfont
+                program = get_track_program_for_soundfont(track_index, source_id)
                 
                 return AudioSource(
                     name=source_id,

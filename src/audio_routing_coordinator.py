@@ -278,16 +278,22 @@ class AudioRoutingCoordinator:
         elif route.audio_source.source_type == AudioSourceType.EXTERNAL_MIDI:
             # Route through per-track router for external MIDI
             if self.per_track_router:
-                return self.per_track_router._play_external_note(
-                    self.per_track_router.track_instances.get(route.track_index), note
-                )
+                instance = self.per_track_router.track_instances.get(route.track_index)
+                if instance and hasattr(self.per_track_router, '_play_external_note'):
+                    return self.per_track_router._play_external_note(instance, note)
+                else:
+                    # Generic per-track routing
+                    return self.per_track_router.play_note(route.track_index, note)
         
         elif route.audio_source.source_type == AudioSourceType.SOUNDFONT:
             # Route through per-track router for soundfonts
             if self.per_track_router:
-                return self.per_track_router._play_soundfont_note(
-                    self.per_track_router.track_instances.get(route.track_index), note
-                )
+                instance = self.per_track_router.track_instances.get(route.track_index)
+                if instance and hasattr(self.per_track_router, '_play_soundfont_note'):
+                    return self.per_track_router._play_soundfont_note(instance, note)
+                else:
+                    # Generic per-track routing
+                    return self.per_track_router.play_note(route.track_index, note)
         
         return False
     
@@ -305,16 +311,22 @@ class AudioRoutingCoordinator:
         elif route.audio_source.source_type == AudioSourceType.EXTERNAL_MIDI:
             # Route through per-track router for external MIDI
             if self.per_track_router:
-                return self.per_track_router._stop_external_note(
-                    self.per_track_router.track_instances.get(route.track_index), note
-                )
+                instance = self.per_track_router.track_instances.get(route.track_index)
+                if instance and hasattr(self.per_track_router, '_stop_external_note'):
+                    return self.per_track_router._stop_external_note(instance, note)
+                else:
+                    # Generic per-track routing
+                    return self.per_track_router.stop_note(route.track_index, note)
         
         elif route.audio_source.source_type == AudioSourceType.SOUNDFONT:
             # Route through per-track router for soundfonts  
             if self.per_track_router:
-                return self.per_track_router._stop_soundfont_note(
-                    self.per_track_router.track_instances.get(route.track_index), note
-                )
+                instance = self.per_track_router.track_instances.get(route.track_index)
+                if instance and hasattr(self.per_track_router, '_stop_soundfont_note'):
+                    return self.per_track_router._stop_soundfont_note(instance, note)
+                else:
+                    # Generic per-track routing
+                    return self.per_track_router.stop_note(route.track_index, note)
         
         return False
     
