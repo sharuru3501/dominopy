@@ -24,11 +24,6 @@ from src.ui.grid_subdivision_widget import GridSubdivisionWidget
 class PyDominoMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        
-        # Disable macOS automatic menu population BEFORE creating any menus
-        if hasattr(Qt, 'AA_DontUseNativeMenuBar'):
-            QApplication.instance().setAttribute(Qt.AA_DontUseNativeMenuBar, False)
-        
         self.setWindowTitle("PyDomino")
         self.setGeometry(100, 100, 800, 600) # x, y, width, height
 
@@ -174,8 +169,6 @@ class PyDominoMainWindow(QMainWindow):
         
         # Edit Menu
         edit_menu = menu_bar.addMenu("&Edit")
-        # Prevent macOS from automatically adding system menu items
-        edit_menu.setAsDockMenu(False) if hasattr(edit_menu, 'setAsDockMenu') else None
         
         undo_action = edit_menu.addAction("&Undo")
         undo_action.setShortcut("Ctrl+Z")
@@ -205,11 +198,6 @@ class PyDominoMainWindow(QMainWindow):
         select_all_action.setShortcut("Ctrl+A")
         select_all_action.triggered.connect(self._select_all)
         
-        # Remove macOS automatic menu items (Emoji & Symbols, Start Dictation, AutoFill)
-        # Use aboutToShow event to clean menu each time it's opened
-        edit_menu.aboutToShow.connect(lambda: self._remove_unwanted_menu_items(edit_menu))
-        # Also try immediate removal
-        self._remove_unwanted_menu_items(edit_menu)
         
         # Settings Menu
         settings_menu = menu_bar.addMenu("&Settings")
@@ -218,46 +206,6 @@ class PyDominoMainWindow(QMainWindow):
         preferences_action.setShortcut("Ctrl+Comma")
         preferences_action.triggered.connect(self._open_settings)
     
-    def _remove_unwanted_menu_items(self, menu):
-        """Remove unwanted macOS automatic menu items"""
-        try:
-            # Get all actions in the menu and submenus
-            actions = menu.actions()
-            
-            # Find and remove unwanted items by text
-            actions_to_remove = []
-            for action in actions:
-                text = action.text()
-                # Remove Emoji & Symbols, Start Dictation, and AutoFill items
-                if ("Emoji" in text or "Symbols" in text or "Start Dictation" in text or 
-                    "AutoFill" in text or "Password" in text or "Contact" in text):
-                    actions_to_remove.append(action)
-                
-                # Also check if this action has a submenu (like AutoFill)
-                if action.menu():
-                    submenu = action.menu()
-                    submenu_title = submenu.title()
-                    if ("AutoFill" in submenu_title or "Password" in submenu_title or 
-                        "Contact" in submenu_title):
-                        actions_to_remove.append(action)
-                        print(f"Found submenu to remove: {submenu_title}")
-            
-            # Remove the actions
-            for action in actions_to_remove:
-                menu.removeAction(action)
-                print(f"Removed unwanted menu item: {action.text()}")
-            
-            # Double-check by scanning again for any remaining items
-            remaining_actions = menu.actions()
-            for action in remaining_actions:
-                text = action.text()
-                if ("AutoFill" in text or "Password" in text or "Contact" in text or
-                    "Emoji" in text or "Symbols" in text or "Start Dictation" in text):
-                    menu.removeAction(action)
-                    print(f"Second pass removal: {text}")
-                
-        except Exception as e:
-            print(f"Warning: Could not remove unwanted menu items: {e}")
 
     def _open_midi_file(self):
         file_dialog = QFileDialog(self)
