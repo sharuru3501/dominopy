@@ -399,42 +399,48 @@ class AudioManager(QObject):
             self.active_notes[pitch] = time.time()  # Store start time for auto-stop
         return success
     
-    def play_note_immediate(self, pitch: int, velocity: int = 100) -> bool:
+    def play_note_immediate(self, pitch: int, velocity: int = 100, channel: int = None) -> bool:
         """Play a note immediately (for playback engine)"""
         success = False
         
+        # Use provided channel or fall back to current_channel
+        use_channel = channel if channel is not None else self.current_channel
+        
         # Try macOS audio first
         if MACOS_AUDIO_AVAILABLE and hasattr(self, 'macos_audio') and self.macos_audio:
-            success = self.macos_audio.play_note(self.current_channel, pitch, velocity)
-            if success: print(f"AudioManager: Immediate play via macOS Audio (pitch={pitch})")
+            success = self.macos_audio.play_note(use_channel, pitch, velocity)
+            if success: print(f"AudioManager: Immediate play via macOS Audio (ch={use_channel}, pitch={pitch})")
         # Try FluidSynth
         elif self.use_fluidsynth and self.fluidsynth_audio:
-            success = self.fluidsynth_audio.play_note(self.current_channel, pitch, velocity)
-            if success: print(f"AudioManager: Immediate play via FluidSynth (pitch={pitch})")
+            success = self.fluidsynth_audio.play_note(use_channel, pitch, velocity)
+            if success: print(f"AudioManager: Immediate play via FluidSynth (ch={use_channel}, pitch={pitch})")
         # Fallback to MIDI output
         elif self.midi_device:
-            success = self.midi_device.send_note_on(self.current_channel, pitch, velocity)
+            success = self.midi_device.send_note_on(use_channel, pitch, velocity)
             if success: print(f"AudioManager: Immediate play via MIDI Output (pitch={pitch})")
         
         # Don't add to active_notes for auto-stop (playback engine handles timing)
         return success
     
-    def stop_note_immediate(self, pitch: int) -> bool:
+    def stop_note_immediate(self, pitch: int, channel: int = None) -> bool:
         """Stop a note immediately (for playback engine)"""
         success = False
         
+        # Use provided channel or fall back to current_channel
+        use_channel = channel if channel is not None else self.current_channel
+        
         # Try macOS audio first
         if MACOS_AUDIO_AVAILABLE and hasattr(self, 'macos_audio') and self.macos_audio:
-            success = self.macos_audio.stop_note(self.current_channel, pitch)
-            if success: print(f"AudioManager: Immediate stop via macOS Audio (pitch={pitch})")
+            success = self.macos_audio.stop_note(use_channel, pitch)
+            if success: print(f"AudioManager: Immediate stop via macOS Audio (ch={use_channel}, pitch={pitch})")
         # Try FluidSynth
         elif self.use_fluidsynth and self.fluidsynth_audio:
-            success = self.fluidsynth_audio.stop_note(self.current_channel, pitch)
-            if success: print(f"AudioManager: Immediate stop via FluidSynth (pitch={pitch})")
+            success = self.fluidsynth_audio.stop_note(use_channel, pitch)
+            if success: print(f"AudioManager: Immediate stop via FluidSynth (ch={use_channel}, pitch={pitch})")
         # Fallback to MIDI output
         elif self.midi_device:
-            success = self.midi_device.send_note_off(self.current_channel, pitch)
-            if success: print(f"AudioManager: Immediate stop via MIDI Output (pitch={pitch})")
+            success = self.midi_device.send_note_off(use_channel, pitch)
+            if success: print(f"AudioManager: Immediate stop via MIDI Output (ch={use_channel}, pitch={pitch})")
         
         # Don't modify active_notes (playback engine handles timing)
         return success

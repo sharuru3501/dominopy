@@ -89,6 +89,9 @@ class PerTrackAudioRouter(QObject):
             success = self._initialize_external_midi(track_index, source)
         elif source.source_type == AudioSourceType.INTERNAL_FLUIDSYNTH:
             success = self._initialize_internal_fluidsynth(track_index, source)
+        elif source.name.startswith("internal_fluidsynth_ch"):
+            # Handle channel-specific internal FluidSynth assignments
+            success = self._initialize_internal_fluidsynth(track_index, source)
         
         if success:
             print(f"Track {track_index} audio initialized: {source.name}")
@@ -226,14 +229,44 @@ class PerTrackAudioRouter(QObject):
             print("No audio manager available for internal FluidSynth")
             return False
         
+        # Extract channel from source name if it's channel-specific
+        channel = track_index  # Default to track index as channel
+        if source.name.startswith("internal_fluidsynth_ch"):
+            try:
+                channel = int(source.name.split("ch")[1])
+            except (ValueError, IndexError):
+                channel = track_index
+        
+        # Create a new AudioSource with correct channel assignment
+        channel_source = AudioSource(
+            name=source.name,
+            source_type=source.source_type,
+            channel=channel,
+            program=source.program,
+            file_path=source.file_path,
+            midi_port_name=source.midi_port_name
+        )
+        
         # Create track instance that uses the global audio manager
         instance = TrackAudioInstance(
             track_index=track_index,
-            source=source
+            source=channel_source
         )
         
         self.track_instances[track_index] = instance
-        print(f"Internal FluidSynth assigned to track {track_index}")
+        
+        # Set the program for this channel on the FluidSynth instance
+        if self.audio_manager and hasattr(self.audio_manager, 'fluidsynth_audio'):
+            fluidsynth = self.audio_manager.fluidsynth_audio
+            if fluidsynth and hasattr(fluidsynth, 'fs'):
+                try:
+                    # Set program for this specific channel
+                    fluidsynth.fs.program_select(channel, fluidsynth.sfid, 0, channel_source.program)
+                    print(f"Set program {channel_source.program} for channel {channel}")
+                except Exception as e:
+                    print(f"Warning: Could not set program for channel {channel}: {e}")
+        
+        print(f"Internal FluidSynth assigned to track {track_index}: {source.name} (ch={channel}, prog={channel_source.program})")
         return True
     
     def play_note(self, track_index: int, note: MidiNote) -> bool:
@@ -343,39 +376,24 @@ class PerTrackAudioRouter(QObject):
     def _play_internal_note(self, instance: TrackAudioInstance, note: MidiNote) -> bool:
         """Play note using internal FluidSynth via MIDI routing system"""
         if self.midi_routing_manager:
-            # Use MIDI routing system to respect enable_internal_audio setting
-            self.midi_routing_manager.play_note(note.channel, note.pitch, note.velocity)
+            # Use MIDI routing system with the track's channel
+            self.midi_routing_manager.play_note(instance.source.channel, note.pitch, note.velocity)
             return True
         elif self.audio_manager:
-            # Fallback to direct audio manager if MIDI routing not available
-            # Set program and channel for this track
-            current_program = self.audio_manager.current_program
-            current_channel = self.audio_manager.current_channel
-            
-            # Temporarily set track-specific program and channel
-            self.audio_manager.set_program(instance.source.program)
-            self.audio_manager.set_channel(instance.source.channel)
-            
-            # Play the note
-            success = self.audio_manager.play_note_immediate(note.pitch, note.velocity)
-            
-            # Restore previous settings (though this may cause issues with overlapping notes)
-            # Note: In a real implementation, we'd want per-channel program management
-            
+            # Fallback to direct audio manager with channel information
+            success = self.audio_manager.play_note_immediate(note.pitch, note.velocity, instance.source.channel)
             return success
         return False
     
     def _stop_internal_note(self, instance: TrackAudioInstance, note: MidiNote) -> bool:
         """Stop note using internal FluidSynth via MIDI routing system"""
         if self.midi_routing_manager:
-            # Use MIDI routing system to respect enable_internal_audio setting
-            self.midi_routing_manager.stop_note(note.channel, note.pitch)
+            # Use MIDI routing system with the track's channel
+            self.midi_routing_manager.stop_note(instance.source.channel, note.pitch)
             return True
         elif self.audio_manager:
-            # Fallback to direct audio manager if MIDI routing not available
-            # Set channel for proper note-off
-            self.audio_manager.set_channel(instance.source.channel)
-            return self.audio_manager.stop_note_immediate(note.pitch)
+            # Fallback to direct audio manager with channel information
+            return self.audio_manager.stop_note_immediate(note.pitch, instance.source.channel)
         return False
     
     def cleanup_track_audio(self, track_index: int):

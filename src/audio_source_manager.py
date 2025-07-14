@@ -289,8 +289,8 @@ class AudioSourceManager(QObject):
         """Validate track assignments and set defaults for unassigned tracks"""
         for track_index in range(max_tracks):
             if track_index not in self.track_sources:
-                # Assign default source
-                self.track_sources[track_index] = "internal_fluidsynth"
+                # Assign default source with unique channel per track
+                self.track_sources[track_index] = f"internal_fluidsynth_ch{track_index}"
 
 # Global audio source manager instance
 _audio_source_manager: Optional[AudioSourceManager] = None
