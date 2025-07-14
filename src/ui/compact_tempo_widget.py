@@ -87,7 +87,7 @@ class CompactTimeSignatureWidget(QWidget):
             "4/4", "3/4", "2/4", "6/8", "9/8", "12/8", "5/4", "7/8"
         ])
         self.time_sig_combo.setCurrentText("4/4")
-        self.time_sig_combo.setMaximumWidth(60)
+        self.time_sig_combo.setMaximumWidth(80)
         self.time_sig_combo.setToolTip("Set time signature")
         self.time_sig_combo.currentTextChanged.connect(self._on_time_signature_changed)
         layout.addWidget(self.time_sig_combo)

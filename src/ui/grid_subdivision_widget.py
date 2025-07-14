@@ -70,11 +70,11 @@ class GridSubdivisionWidget(QWidget):
         # Styling
         self.setStyleSheet("""
             QComboBox {
-                background-color: #44475a;
+                background-color: white;
                 border: 1px solid #6272a4;
                 border-radius: 3px;
                 padding: 2px 5px;
-                color: #f8f8f2;
+                color: black;
             }
             QComboBox::drop-down {
                 border: none;
@@ -84,10 +84,10 @@ class GridSubdivisionWidget(QWidget):
                 border: none;
             }
             QComboBox QAbstractItemView {
-                background-color: #44475a;
+                background-color: white;
                 border: 1px solid #6272a4;
                 selection-background-color: #6272a4;
-                color: #f8f8f2;
+                color: black;
             }
         """)
     

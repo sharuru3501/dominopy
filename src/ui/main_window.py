@@ -219,8 +219,9 @@ class PyDominoMainWindow(QMainWindow):
             actions_to_remove = []
             for action in actions:
                 text = action.text()
-                # Remove Emoji & Symbols and Start Dictation
-                if "Emoji" in text or "Symbols" in text or "Start Dictation" in text:
+                # Remove Emoji & Symbols, Start Dictation, and AutoFill items
+                if ("Emoji" in text or "Symbols" in text or "Start Dictation" in text or 
+                    "AutoFill" in text or "Password" in text or "Contact" in text):
                     actions_to_remove.append(action)
             
             # Remove the actions
