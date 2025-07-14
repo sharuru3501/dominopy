@@ -89,7 +89,11 @@ class FluidSynthAudio(QObject):
                     self.fs.program_select(0, self.sfid, 0, 0)
                     
                     # Now set the proper gain after initialization is complete
-                    self.fs.set_gain(self.settings.gain)
+                    try:
+                        # FluidSynth uses setting() method for gain control
+                        self.fs.setting('synth.gain', self.settings.gain)
+                    except Exception as e:
+                        print(f"Warning: Could not set FluidSynth gain: {e}")
                     
                     self.is_initialized = True
                     self.audio_ready.emit()

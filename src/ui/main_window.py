@@ -88,6 +88,9 @@ class PyDominoMainWindow(QMainWindow):
         self.piano_roll.v_scrollbar = self.v_scrollbar
 
         self.setCentralWidget(central_widget)
+        
+        # Center the view on C4 after widget is properly sized
+        QTimer.singleShot(100, self._center_on_c4)
 
         # Create status bar (simplified)
         self.status_bar = PyDominoStatusBar()
@@ -206,6 +209,34 @@ class PyDominoMainWindow(QMainWindow):
         preferences_action.setShortcut("Ctrl+Comma")
         preferences_action.triggered.connect(self._open_settings)
     
+    def _center_on_c4(self):
+        """Center the piano roll view on C4 (MIDI note 60)"""
+        try:
+            # Get piano roll widget height
+            piano_roll_height = self.piano_roll.height()
+            if piano_roll_height <= 0:
+                # Widget not ready yet, try again later
+                QTimer.singleShot(200, self._center_on_c4)
+                return
+            
+            # Calculate how many pitches are visible in the current view
+            pixels_per_pitch = self.piano_roll.pixels_per_pitch
+            visible_pitches = piano_roll_height / pixels_per_pitch
+            
+            # Calculate the scroll position to center C4 (MIDI note 60)
+            # We want C4 to be in the middle of the visible area
+            c4_midi = 60
+            center_position = c4_midi - (visible_pitches / 2)
+            
+            # Clamp to valid range (0 to 107)
+            center_position = max(0, min(107, int(center_position)))
+            
+            # Set the scrollbar to center C4
+            self.v_scrollbar.setValue(center_position)
+            print(f"Centered view on C4: scroll position {center_position}, visible pitches: {visible_pitches:.1f}")
+            
+        except Exception as e:
+            print(f"Error centering on C4: {e}")
 
     def _open_midi_file(self):
         file_dialog = QFileDialog(self)
