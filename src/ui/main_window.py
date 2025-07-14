@@ -1,6 +1,6 @@
 
 from PySide6.QtWidgets import (QMainWindow, QFileDialog, QWidget, QHBoxLayout, QToolBar, 
-                              QScrollArea, QVBoxLayout, QScrollBar, QDockWidget, QMessageBox, QDialog)
+                              QScrollArea, QVBoxLayout, QScrollBar, QDockWidget, QMessageBox, QDialog, QApplication)
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtCore import Qt, QTimer
 from src.ui.piano_roll_widget import PianoRollWidget
@@ -24,6 +24,11 @@ from src.ui.grid_subdivision_widget import GridSubdivisionWidget
 class PyDominoMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        
+        # Disable macOS automatic menu population BEFORE creating any menus
+        if hasattr(Qt, 'AA_DontUseNativeMenuBar'):
+            QApplication.instance().setAttribute(Qt.AA_DontUseNativeMenuBar, False)
+        
         self.setWindowTitle("PyDomino")
         self.setGeometry(100, 100, 800, 600) # x, y, width, height
 
@@ -169,6 +174,8 @@ class PyDominoMainWindow(QMainWindow):
         
         # Edit Menu
         edit_menu = menu_bar.addMenu("&Edit")
+        # Prevent macOS from automatically adding system menu items
+        edit_menu.setAsDockMenu(False) if hasattr(edit_menu, 'setAsDockMenu') else None
         
         undo_action = edit_menu.addAction("&Undo")
         undo_action.setShortcut("Ctrl+Z")
@@ -199,10 +206,10 @@ class PyDominoMainWindow(QMainWindow):
         select_all_action.triggered.connect(self._select_all)
         
         # Remove macOS automatic menu items (Emoji & Symbols, Start Dictation, AutoFill)
-        # Multiple attempts with different delays to ensure removal
-        QTimer.singleShot(100, lambda: self._remove_unwanted_menu_items(edit_menu))
-        QTimer.singleShot(500, lambda: self._remove_unwanted_menu_items(edit_menu))
-        QTimer.singleShot(1000, lambda: self._remove_unwanted_menu_items(edit_menu))
+        # Use aboutToShow event to clean menu each time it's opened
+        edit_menu.aboutToShow.connect(lambda: self._remove_unwanted_menu_items(edit_menu))
+        # Also try immediate removal
+        self._remove_unwanted_menu_items(edit_menu)
         
         # Settings Menu
         settings_menu = menu_bar.addMenu("&Settings")
