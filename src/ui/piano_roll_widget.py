@@ -17,11 +17,13 @@ from src.grid_system import GridManager, GridCell
 from src.audio_system import get_audio_manager
 from src.track_manager import get_track_manager
 from src.audio_source_manager import AudioSourceType
+from src.logger import get_logger, print_debug
 import copy
 
 class PianoRollWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.logger = get_logger(__name__)
         self.setMinimumSize(600, 400)
         self.setStyleSheet("background-color: #282c34;") # Dark background
         self.midi_project: MidiProject = None
@@ -124,12 +126,12 @@ class PianoRollWidget(QWidget):
         valid_modes = ["none", "velocity", "volume", "expression"]
         if mode in valid_modes:
             self.parameter_edit_mode = mode
-            print(f"Parameter edit mode changed to: {self.parameter_edit_mode}")
+            self.logger.debug(f"Parameter edit mode changed to: {self.parameter_edit_mode}")
             
             # Force repaint to show/hide parameter layer
             self.update()
         else:
-            print(f"Invalid parameter mode: {mode}")
+            self.logger.warning(f"Invalid parameter mode: {mode}")
     
     def get_parameter_edit_mode(self) -> str:
         """Get current parameter editing mode"""
@@ -2425,7 +2427,7 @@ class PianoRollWidget(QWidget):
         self.parameter_drag_start_pos = None
         self.parameter_drag_start_value = None
         self.last_parameter_edit_pos = None
-        print("Parameter editing released")
+        self.logger.debug("Parameter editing released")
     
     def _draw_parameter_line(self, track, start_tick: int, end_tick: int, start_y: float, end_y: float):
         """Draw a smooth line of automation points between two positions"""

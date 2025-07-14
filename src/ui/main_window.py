@@ -20,10 +20,12 @@ from src.ui.track_list_widget import TrackListWidget
 from src.ui.virtual_keyboard_widget import VirtualKeyboardWidget
 from src.ui.measure_bar_widget import MeasureBarWidget
 from src.ui.grid_subdivision_widget import GridSubdivisionWidget
+from src.logger import get_logger, print_debug
 
 class PyDominoMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.logger = get_logger(__name__)
         self.setWindowTitle("PyDomino")
         self.setGeometry(100, 100, 800, 600) # x, y, width, height
 
@@ -233,7 +235,7 @@ class PyDominoMainWindow(QMainWindow):
             
             # Set the scrollbar to center C4
             self.v_scrollbar.setValue(center_position)
-            print(f"Centered view on C4: scroll position {center_position}, visible pitches: {visible_pitches:.1f}")
+            print_debug(f"Centered view on C4: scroll position {center_position}, visible pitches: {visible_pitches:.1f}")
             
         except Exception as e:
             print(f"Error centering on C4: {e}")
@@ -367,7 +369,7 @@ class PyDominoMainWindow(QMainWindow):
                     # Fallback: just clear the display
                     self.music_info_widget.update_notes([])
             
-            print("Settings applied - UI components updated")
+            print_debug("Settings applied - UI components updated")
             
         except Exception as e:
             print(f"Error in settings applied handler: {e}")
@@ -476,10 +478,10 @@ class PyDominoMainWindow(QMainWindow):
         # Initialize audio manager
         init_result = initialize_audio_manager(audio_settings)
         if init_result:
-            print("Audio system initialized successfully")
+            print_debug("Audio system initialized successfully")
         else:
-            print("Warning: Audio system initialization failed")
-        print(f"_initialize_audio_system() received: {init_result}")
+            print_debug("Warning: Audio system initialization failed")
+        print_debug(f"_initialize_audio_system() received: {init_result}")
     
     def _initialize_audio_source_manager(self):
         """Initialize the audio source manager"""
@@ -1024,7 +1026,7 @@ class PyDominoMainWindow(QMainWindow):
         
         internal_mode = mode_mapping.get(selected_text, "none")
         self.piano_roll.set_parameter_edit_mode(internal_mode)
-        print(f"Parameter editing mode changed to: {internal_mode}")
+        self.logger.debug(f"Parameter editing mode changed to: {internal_mode}")
     
     def _on_grid_subdivision_changed(self, subdivision_type: str, ticks_per_subdivision: int):
         """Handle grid subdivision changes from subdivision widget"""
