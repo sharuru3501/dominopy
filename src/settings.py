@@ -13,6 +13,86 @@ class OctaveStandard(Enum):
     ROLAND = "roland"      # C4 = MIDI note 60 (Middle C) - Default
     SCIENTIFIC = "scientific"  # C4 = MIDI note 60 (Scientific pitch notation)
 
+class Theme(Enum):
+    """UI theme options"""
+    DARK = "dark"
+    LIGHT = "light"
+
+@dataclass
+class ThemeColors:
+    """Color scheme for a theme"""
+    # Main background
+    background: str
+    
+    # Piano roll backgrounds
+    white_key_background: str
+    black_key_background: str
+    
+    # Grid lines
+    grid_line_normal: str
+    grid_line_c_note: str
+    grid_line_measure: str
+    grid_line_beat: str
+    grid_line_subdivision: str
+    
+    # Notes
+    note_default: str
+    note_selected: str
+    
+    # Parameter editing
+    param_velocity: str
+    param_volume: str
+    param_expression: str
+    
+    # Piano keyboard
+    piano_white_key: str
+    piano_black_key: str
+    piano_separator: str
+    
+    # Playhead
+    playhead: str
+
+# Define theme color schemes
+DARK_THEME = ThemeColors(
+    background="#282c34",
+    white_key_background="#323741",
+    black_key_background="#2a2d35",
+    grid_line_normal="#3e4452",
+    grid_line_c_note="#8be9fd",
+    grid_line_measure="#ff79c6",
+    grid_line_beat="#3e4452",
+    grid_line_subdivision="#3a3a3a",
+    note_default="#61afef",
+    note_selected="#ffb86c",
+    param_velocity="#FF6B6B",
+    param_volume="#4ECDC4",
+    param_expression="#45B7D1",
+    piano_white_key="#f8f8f2",
+    piano_black_key="#44475a",
+    piano_separator="#6272a4",
+    playhead="#ff5555"
+)
+
+LIGHT_THEME = ThemeColors(
+    background="#f8f8f2",
+    white_key_background="#ffffff",
+    black_key_background="#f0f0f0",
+    grid_line_normal="#d0d0d0",
+    grid_line_c_note="#0080ff",
+    grid_line_measure="#ff6b9d",
+    grid_line_beat="#d0d0d0",
+    grid_line_subdivision="#e8e8e8",
+    note_default="#2e5bda",
+    note_selected="#ff8c00",
+    param_velocity="#e74c3c",
+    param_volume="#16a085",
+    param_expression="#2980b9",
+    piano_white_key="#ffffff",
+    piano_black_key="#2c3e50",
+    piano_separator="#7f8c8d",
+    playhead="#e74c3c"
+)
+
 @dataclass
 class DisplaySettings:
     """Display and UI settings"""
@@ -28,7 +108,10 @@ class DisplaySettings:
     show_grid_lines: bool = True
     snap_to_grid: bool = True
     
-    # Colors (hex values)
+    # Theme setting
+    theme: str = Theme.DARK.value
+    
+    # Colors (hex values) - kept for backward compatibility
     background_color: str = "#282c34"
     grid_color: str = "#44475a"
     note_color: str = "#50fa7b"
@@ -132,6 +215,18 @@ class SettingsManager:
         note_index = midi_pitch % 12
         note_names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
         return f"{note_names[note_index]}{octave}"
+    
+    def get_theme_colors(self) -> ThemeColors:
+        """Get current theme colors"""
+        if self.settings.display.theme == Theme.LIGHT.value:
+            return LIGHT_THEME
+        else:
+            return DARK_THEME
+    
+    def set_theme(self, theme: Theme):
+        """Set current theme"""
+        self.settings.display.theme = theme.value
+        self.save_settings()
 
 # Global settings manager instance
 _settings_manager = None

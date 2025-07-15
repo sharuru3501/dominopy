@@ -420,6 +420,24 @@ class PyDominoMainWindow(QMainWindow):
         self.rewind_action.triggered.connect(self._rewind_playback)
         toolbar.addAction(self.rewind_action)
         
+        toolbar.addSeparator()
+        
+        # Theme switching dropdown
+        theme_label = QLabel("Theme:")
+        toolbar.addWidget(theme_label)
+        
+        self.theme_combo = QComboBox()
+        self.theme_combo.addItems(["Dark", "Light"])
+        
+        # Set current theme from settings
+        from src.settings import get_settings_manager
+        settings_manager = get_settings_manager()
+        current_theme = settings_manager.settings.display.theme
+        self.theme_combo.setCurrentText("Light" if current_theme == "light" else "Dark")
+        
+        self.theme_combo.currentTextChanged.connect(self._on_theme_changed)
+        toolbar.addWidget(self.theme_combo)
+        
         # Keep the rest of toolbar actions minimal
         
         # Store references for later use
@@ -459,6 +477,10 @@ class PyDominoMainWindow(QMainWindow):
         # Re-enable signals
         self.note_input_action.blockSignals(False)
         self.selection_action.blockSignals(False)
+    
+    def _on_theme_changed(self, theme_name: str):
+        """Handle theme change from toolbar dropdown"""
+        self.piano_roll.set_theme(theme_name.lower())
     
     def _initialize_audio_system(self):
         """Initialize the audio system"""

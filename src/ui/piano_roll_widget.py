@@ -25,14 +25,17 @@ class PianoRollWidget(QWidget):
         super().__init__(parent)
         self.logger = get_logger(__name__)
         self.setMinimumSize(600, 400)
-        self.setStyleSheet("background-color: #282c34;") # Dark background
         self.midi_project: MidiProject = None
 
         # Scaling factors (pixels per tick, pixels per pitch) - now configurable
-        from src.settings import get_settings
-        settings = get_settings()
+        from src.settings import get_settings_manager
+        self.settings_manager = get_settings_manager()
+        settings = self.settings_manager.settings
         self.pixels_per_tick = settings.display.grid_width_pixels  # Now stored as pixels per tick
         self.pixels_per_pitch = settings.display.grid_height_pixels
+        
+        # Apply theme
+        self._apply_theme()
         
         # Piano keyboard settings
         self.piano_width = 80  # Width of piano keyboard on the left
@@ -98,6 +101,9 @@ class PianoRollWidget(QWidget):
         self.parameter_editing = False
         self.dragging_automation_point = None  # (note, point_index) or None
         self.parameter_drag_start_pos = None
+        
+        # Theme colors - will be set by _apply_theme()
+        self.theme_colors = None
         self.parameter_drag_start_value = None
         self.last_parameter_edit_pos = None  # For trackpad swiping
         
@@ -120,6 +126,36 @@ class PianoRollWidget(QWidget):
         
         # Force initial update to show playhead
         self.update()
+    
+    def _apply_theme(self):
+        """Apply current theme colors"""
+        if not self.settings_manager:
+            return
+        
+        self.theme_colors = self.settings_manager.get_theme_colors()
+        
+        # Update background color
+        self.setStyleSheet(f"background-color: {self.theme_colors.background};")
+        
+        # Update parameter colors based on theme
+        self.parameter_colors = {
+            "velocity": self.theme_colors.param_velocity,
+            "volume": self.theme_colors.param_volume,
+            "expression": self.theme_colors.param_expression
+        }
+        
+        # Force repaint to apply new colors
+        self.update()
+    
+    def set_theme(self, theme_name: str):
+        """Set theme and update display"""
+        from src.settings import Theme
+        if theme_name == "light":
+            self.settings_manager.set_theme(Theme.LIGHT)
+        else:
+            self.settings_manager.set_theme(Theme.DARK)
+        
+        self._apply_theme()
     
     def set_parameter_edit_mode(self, mode: str):
         """Set parameter editing mode from external source (e.g., main window toolbar)"""
@@ -238,6 +274,15 @@ class PianoRollWidget(QWidget):
         width = self.width()
         height = self.height()
         
+        # Ensure theme colors are loaded
+        if not self.theme_colors:
+            self._apply_theme()
+        
+        # Fallback to default colors if theme colors still not available
+        if not self.theme_colors:
+            from src.settings import DARK_THEME
+            self.theme_colors = DARK_THEME
+        
         # Calculate grid area (excluding piano keyboard)
         grid_start_x = self.piano_width if self.show_piano_keyboard else 0
         grid_width = width - grid_start_x
@@ -246,15 +291,37 @@ class PianoRollWidget(QWidget):
         if self.show_piano_keyboard:
             self._draw_piano_keyboard(painter, height)
 
-        # Draw grid (simplified for now)
-        # Horizontal lines for pitches (extended range C-1 to B9)
+        # Draw grid with alternating horizontal backgrounds and lines
+        # First, draw alternating background colors for better pitch visibility
+        for pitch in range(0, 120): # C-1 (0) to B9 (119)
+            y = self._pitch_to_y(pitch)
+            note_height = self.pixels_per_pitch
+            
+            # Check if it's a black key or white key
+            note_in_octave = pitch % 12
+            is_black_key = note_in_octave in [1, 3, 6, 8, 10]  # C#, D#, F#, G#, A#
+            
+            # Draw background rectangle for this pitch
+            if is_black_key:
+                # Darker background for black key pitches
+                painter.setBrush(QColor(self.theme_colors.black_key_background))
+            else:
+                # Lighter background for white key pitches
+                painter.setBrush(QColor(self.theme_colors.white_key_background))
+            
+            painter.setPen(Qt.NoPen)
+            painter.drawRect(grid_start_x, int(y), grid_width, int(note_height))
+        
+        # Then draw horizontal lines for pitches
         for pitch in range(0, 120): # C-1 (0) to B9 (119)
             y = self._pitch_to_y(pitch)
             if pitch % 12 == 0: # C notes (octaves)
-                painter.setPen(QColor("#8be9fd")) # Light blue for C notes
+                # Draw C line at the bottom of the note (not top)
+                painter.setPen(QColor(self.theme_colors.grid_line_c_note))
+                painter.drawLine(grid_start_x, int(y + self.pixels_per_pitch), width, int(y + self.pixels_per_pitch))
             else:
-                painter.setPen(QColor("#3e4452")) # Lighter for other notes
-            painter.drawLine(grid_start_x, int(y), width, int(y))
+                painter.setPen(QColor(self.theme_colors.grid_line_normal))
+                painter.drawLine(grid_start_x, int(y), width, int(y))
 
         # Vertical lines for beats and measures
         ticks_per_beat = self.midi_project.ticks_per_beat if self.midi_project else 480
@@ -293,7 +360,7 @@ class PianoRollWidget(QWidget):
                 x = self._tick_to_x(tick) + grid_start_x
                 if x >= grid_start_x and x <= self.width():  # Only draw if visible
                     # Draw measure line
-                    painter.setPen(QColor("#ff79c6"))  # Pink/magenta for measures
+                    painter.setPen(QColor(self.theme_colors.grid_line_measure))
                     painter.drawLine(int(x), 0, int(x), height)
         
         # Draw beat lines (lighter, subdivision within measures)
@@ -311,13 +378,13 @@ class PianoRollWidget(QWidget):
             if tick >= self.visible_start_tick - ticks_per_subdivision and tick % ticks_per_measure != 0:  # Skip measure lines
                 x = self._tick_to_x(tick) + grid_start_x
                 if x >= grid_start_x and x <= self.width():  # Only draw if visible
-                    painter.setPen(QColor("#3e4452"))  # Lighter for beats
+                    painter.setPen(QColor(self.theme_colors.grid_line_beat))
                     painter.drawLine(int(x), 0, int(x), height)
 
         # Draw subdivision lines (finest grid lines within beats)
         if hasattr(self, 'ticks_per_subdivision') and self.ticks_per_subdivision < ticks_per_beat:
             # Set up custom dashed pen for subdivision lines
-            subdivision_pen = QPen(QColor("#3a3a3a"))  # Lighter color for better subtlety
+            subdivision_pen = QPen(QColor(self.theme_colors.grid_line_subdivision))
             subdivision_pen.setStyle(Qt.CustomDashLine)  # Use custom dash pattern
             subdivision_pen.setDashPattern([4, 8])  # Pattern: 4 pixels on, 8 pixels off (coarser)
             subdivision_pen.setWidth(1)
@@ -356,13 +423,14 @@ class PianoRollWidget(QWidget):
                     if x < width and x + note_width > grid_start_x:
                         # Draw note rectangle with track color
                         if note in self.selected_notes:
-                            # For selected notes, use a lighter version of track color
-                            base_color = QColor(track_color)
-                            lighter_color = base_color.lighter(150)  # 50% lighter
-                            painter.setBrush(lighter_color)
+                            # For selected notes, use theme selected color
+                            painter.setBrush(QColor(self.theme_colors.note_selected))
                         else:
-                            # Use track color for unselected notes
-                            painter.setBrush(QColor(track_color))
+                            # Use track color or theme default for unselected notes
+                            if track_color:
+                                painter.setBrush(QColor(track_color))
+                            else:
+                                painter.setBrush(QColor(self.theme_colors.note_default))
                         painter.setPen(Qt.NoPen)
                         painter.drawRect(int(x), int(y), int(note_width), int(note_height))
 
@@ -994,10 +1062,10 @@ class PianoRollWidget(QWidget):
         # Show parameter editing mode if active, otherwise show normal edit mode
         if self.parameter_edit_mode != "none":
             mode_text = f"Parameter Edit: {self.parameter_edit_mode.capitalize()} (ESC to exit)"
-            mode_color = QColor("#e74c3c")  # Red for parameter editing
+            mode_color = QColor(self.theme_colors.param_velocity)  # Red for parameter editing
         else:
             mode_text = self.edit_mode_manager.get_mode_display_name()
-            mode_color = QColor("#50c7e3") if self.edit_mode_manager.is_selection_mode() else QColor("#f39c12")
+            mode_color = QColor(self.theme_colors.note_selected) if self.edit_mode_manager.is_selection_mode() else QColor(self.theme_colors.note_default)
         
         painter.setPen(mode_color)
         painter.drawText(width - 350, 25, mode_text)
@@ -1006,7 +1074,7 @@ class PianoRollWidget(QWidget):
         font.setPointSize(10)
         font.setBold(False)
         painter.setFont(font)
-        painter.setPen(QColor("#aaaaaa"))
+        painter.setPen(QColor(self.theme_colors.grid_line_normal))
         painter.drawText(width - 200, 45, self.edit_mode_manager.get_mode_description())
         
         painter.restore()
@@ -1595,8 +1663,17 @@ class PianoRollWidget(QWidget):
         
         painter.save()
         
+        # Ensure theme colors are loaded
+        if not self.theme_colors:
+            self._apply_theme()
+        
+        # Fallback to default colors if theme colors still not available
+        if not self.theme_colors:
+            from src.settings import DARK_THEME
+            self.theme_colors = DARK_THEME
+        
         # Background for piano area
-        painter.fillRect(0, 0, self.piano_width, height, QColor("#1e1e1e"))
+        painter.fillRect(0, 0, self.piano_width, height, QColor(self.theme_colors.background))
         
         # Draw white keys first (extended range)
         for pitch in range(0, 120):
@@ -1605,13 +1682,13 @@ class PianoRollWidget(QWidget):
                 y = self._pitch_to_y(pitch)
                 key_height = self.pixels_per_pitch
                 
-                # White key color - always white
-                key_color = QColor("#f8f8f2")
+                # White key color
+                key_color = QColor(self.theme_colors.piano_white_key)
                 
                 painter.fillRect(0, int(y), self.piano_width - 1, int(key_height), key_color)
                 
                 # Key border
-                painter.setPen(QColor("#44475a"))
+                painter.setPen(QColor(self.theme_colors.piano_separator))
                 painter.drawRect(0, int(y), self.piano_width - 1, int(key_height))
                 
                 # Note label for C notes
@@ -1620,7 +1697,7 @@ class PianoRollWidget(QWidget):
                     font = QFont()
                     font.setPointSize(8)
                     painter.setFont(font)
-                    painter.setPen(QColor("#282a36"))
+                    painter.setPen(QColor(self.theme_colors.piano_black_key))
                     painter.drawText(5, int(y + key_height - 3), f"C{octave}")
         
         # Draw black keys on top (extended range)
@@ -1631,17 +1708,17 @@ class PianoRollWidget(QWidget):
                 key_height = self.pixels_per_pitch
                 black_key_width = int(self.piano_width * 0.5)  # Make black keys shorter
                 
-                # Black key color - always black
-                key_color = QColor("#282a36")
+                # Black key color
+                key_color = QColor(self.theme_colors.piano_black_key)
                 
                 painter.fillRect(0, int(y), black_key_width, int(key_height), key_color)
                 
                 # Key border
-                painter.setPen(QColor("#6272a4"))
+                painter.setPen(QColor(self.theme_colors.piano_separator))
                 painter.drawRect(0, int(y), black_key_width, int(key_height))
         
         # Separator line between piano and grid
-        painter.setPen(QColor("#6272a4"))
+        painter.setPen(QColor(self.theme_colors.piano_separator))
         painter.drawLine(self.piano_width - 1, 0, self.piano_width - 1, height)
         
         painter.restore()
@@ -1659,10 +1736,7 @@ class PianoRollWidget(QWidget):
             return
         
         # Draw simple playhead line
-        if self.is_playing:
-            painter.setPen(QPen(QColor("#50fa7b"), 3))  # Green when playing
-        else:
-            painter.setPen(QPen(QColor("#bd93f9"), 3))  # Purple when stopped
+        painter.setPen(QPen(QColor(self.theme_colors.playhead), 3))
         
         painter.drawLine(int(playhead_x), 0, int(playhead_x), height)
         
