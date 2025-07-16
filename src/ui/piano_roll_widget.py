@@ -1706,7 +1706,7 @@ class PianoRollWidget(QWidget):
             if note_index in black_keys:  # Black key
                 y = self._pitch_to_y(pitch)
                 key_height = self.pixels_per_pitch
-                black_key_width = int(self.piano_width * 0.5)  # Make black keys shorter
+                black_key_width = self.piano_width  # Make black keys full width
                 
                 # Black key color
                 key_color = QColor(self.theme_colors.piano_black_key)
