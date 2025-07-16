@@ -1656,7 +1656,7 @@ class PianoRollWidget(QWidget):
         return self.edit_mode_manager
     
     def _draw_piano_keyboard(self, painter: QPainter, height: int):
-        """Draw realistic piano keyboard on the left side"""
+        """Draw piano keyboard with black keys positioned between white keys"""
         painter.save()
         
         # Ensure theme colors are loaded
@@ -1671,111 +1671,38 @@ class PianoRollWidget(QWidget):
         # Background for piano area
         painter.fillRect(0, 0, self.piano_width, height, QColor(self.theme_colors.background))
         
-        # Piano layout constants
-        white_key_pattern = [0, 2, 4, 5, 7, 9, 11]  # C, D, E, F, G, A, B
-        black_key_pattern = [1, 3, 6, 8, 10]  # C#, D#, F#, G#, A#
-        
-        # Calculate octave height (7 white keys per octave)
-        octave_height = self.pixels_per_pitch * 12  # 12 semitones per octave
-        white_key_height = octave_height / 7  # 7 white keys per octave
-        
-        # Draw white keys first (base layer)
-        for octave in range(-1, 10):  # C-1 to B9
-            for white_key_index, semitone_offset in enumerate(white_key_pattern):
-                pitch = (octave + 1) * 12 + semitone_offset
-                if pitch < 0 or pitch >= 120:
-                    continue
+        # Draw all keys in chromatic order: C, C#, D, D#, E, F, F#, G, G#, A, A#, B
+        for pitch in range(0, 120):
+            y = self._pitch_to_y(pitch)
+            key_height = self.pixels_per_pitch
+            
+            note_in_octave = pitch % 12
+            is_black_key = note_in_octave in [1, 3, 6, 8, 10]  # C#, D#, F#, G#, A#
+            
+            if is_black_key:
+                # Draw black key (narrower)
+                black_key_width = int(self.piano_width * 0.5)
+                key_color = QColor(self.theme_colors.piano_black_key)
                 
-                # Calculate white key position
-                octave_start_y = self._pitch_to_y((octave + 1) * 12 + 11)  # B note of octave
-                white_key_y = octave_start_y + (white_key_index * white_key_height)
-                
-                # White key color
+                painter.fillRect(0, int(y), black_key_width, int(key_height), key_color)
+                painter.setPen(QColor(self.theme_colors.piano_separator))
+                painter.drawRect(0, int(y), black_key_width, int(key_height))
+            else:
+                # Draw white key (full width)
                 key_color = QColor(self.theme_colors.piano_white_key)
                 
-                # Draw white key
-                painter.fillRect(0, int(white_key_y), self.piano_width - 1, int(white_key_height), key_color)
-                
-                # Key border
+                painter.fillRect(0, int(y), self.piano_width - 1, int(key_height), key_color)
                 painter.setPen(QColor(self.theme_colors.piano_separator))
-                painter.drawRect(0, int(white_key_y), self.piano_width - 1, int(white_key_height))
+                painter.drawRect(0, int(y), self.piano_width - 1, int(key_height))
                 
                 # Note label for C notes
-                if semitone_offset == 0:  # C note
+                if note_in_octave == 0:  # C note
+                    octave = (pitch // 12) - 1
                     font = QFont()
                     font.setPointSize(8)
                     painter.setFont(font)
                     painter.setPen(QColor(self.theme_colors.piano_black_key))
-                    painter.drawText(5, int(white_key_y + white_key_height - 3), f"C{octave}")
-        
-        # Draw black keys on top (overlay layer) - more realistic piano layout
-        black_key_width = int(self.piano_width * 0.5)  # Black keys are narrower (50% of white key width)
-        black_key_height = white_key_height * 0.6  # Black keys are shorter (60% of white key height)
-        
-        # More precise black key positions - closer to real piano
-        # Each black key is positioned between specific white keys
-        for octave in range(-1, 10):  # C-1 to B9
-            octave_start_y = self._pitch_to_y((octave + 1) * 12 + 11)  # B note of octave
-            
-            # C# - between C and D
-            pitch = (octave + 1) * 12 + 1  # C#
-            if 0 <= pitch < 120:
-                c_y = octave_start_y + (0 * white_key_height)  # C position
-                d_y = octave_start_y + (1 * white_key_height)  # D position
-                black_key_y = c_y + (d_y - c_y) * 0.6 - (black_key_height / 2)  # Slightly closer to D
-                
-                key_color = QColor(self.theme_colors.piano_black_key)
-                painter.fillRect(0, int(black_key_y), black_key_width, int(black_key_height), key_color)
-                painter.setPen(QColor(self.theme_colors.piano_separator))
-                painter.drawRect(0, int(black_key_y), black_key_width, int(black_key_height))
-            
-            # D# - between D and E
-            pitch = (octave + 1) * 12 + 3  # D#
-            if 0 <= pitch < 120:
-                d_y = octave_start_y + (1 * white_key_height)  # D position
-                e_y = octave_start_y + (2 * white_key_height)  # E position
-                black_key_y = d_y + (e_y - d_y) * 0.4 - (black_key_height / 2)  # Slightly closer to D
-                
-                key_color = QColor(self.theme_colors.piano_black_key)
-                painter.fillRect(0, int(black_key_y), black_key_width, int(black_key_height), key_color)
-                painter.setPen(QColor(self.theme_colors.piano_separator))
-                painter.drawRect(0, int(black_key_y), black_key_width, int(black_key_height))
-            
-            # F# - between F and G
-            pitch = (octave + 1) * 12 + 6  # F#
-            if 0 <= pitch < 120:
-                f_y = octave_start_y + (3 * white_key_height)  # F position
-                g_y = octave_start_y + (4 * white_key_height)  # G position
-                black_key_y = f_y + (g_y - f_y) * 0.6 - (black_key_height / 2)  # Slightly closer to G
-                
-                key_color = QColor(self.theme_colors.piano_black_key)
-                painter.fillRect(0, int(black_key_y), black_key_width, int(black_key_height), key_color)
-                painter.setPen(QColor(self.theme_colors.piano_separator))
-                painter.drawRect(0, int(black_key_y), black_key_width, int(black_key_height))
-            
-            # G# - between G and A
-            pitch = (octave + 1) * 12 + 8  # G#
-            if 0 <= pitch < 120:
-                g_y = octave_start_y + (4 * white_key_height)  # G position
-                a_y = octave_start_y + (5 * white_key_height)  # A position
-                black_key_y = g_y + (a_y - g_y) * 0.5 - (black_key_height / 2)  # Centered
-                
-                key_color = QColor(self.theme_colors.piano_black_key)
-                painter.fillRect(0, int(black_key_y), black_key_width, int(black_key_height), key_color)
-                painter.setPen(QColor(self.theme_colors.piano_separator))
-                painter.drawRect(0, int(black_key_y), black_key_width, int(black_key_height))
-            
-            # A# - between A and B
-            pitch = (octave + 1) * 12 + 10  # A#
-            if 0 <= pitch < 120:
-                a_y = octave_start_y + (5 * white_key_height)  # A position
-                b_y = octave_start_y + (6 * white_key_height)  # B position
-                black_key_y = a_y + (b_y - a_y) * 0.4 - (black_key_height / 2)  # Slightly closer to A
-                
-                key_color = QColor(self.theme_colors.piano_black_key)
-                painter.fillRect(0, int(black_key_y), black_key_width, int(black_key_height), key_color)
-                painter.setPen(QColor(self.theme_colors.piano_separator))
-                painter.drawRect(0, int(black_key_y), black_key_width, int(black_key_height))
+                    painter.drawText(5, int(y + key_height - 3), f"C{octave}")
         
         # Separator line between piano and grid
         painter.setPen(QColor(self.theme_colors.piano_separator))

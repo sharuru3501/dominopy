@@ -662,7 +662,7 @@ class PianoKeyboardDisplay(QWidget):
         self.update()
     
     def paintEvent(self, event):
-        """Paint the piano keyboard"""
+        """Paint the piano keyboard with chromatic layout"""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         
@@ -670,18 +670,28 @@ class PianoKeyboardDisplay(QWidget):
         widget_width = self.width()
         widget_height = self.height()
         
-        # Piano key dimensions (authentic piano proportions)
-        total_white_keys = 7 * self.visible_octaves  # 7 white keys per octave
-        white_key_width = widget_width / total_white_keys
-        white_key_height = widget_height
-        black_key_width = white_key_width * 0.5   # Authentic black key width (50% of white)
-        black_key_height = white_key_height * 0.6  # Authentic black key height (60% of white)
+        # Draw all 12 chromatic notes in order for each octave
+        total_semitones = 12 * self.visible_octaves
+        semitone_width = widget_width / total_semitones
         
-        # Draw white keys first
-        self._draw_white_keys(painter, white_key_width, white_key_height)
-        
-        # Draw black keys on top
-        self._draw_black_keys(painter, white_key_width, black_key_width, black_key_height)
+        for octave in range(self.visible_octaves):
+            for semitone in range(12):  # 12 semitones per octave
+                midi_note = (self.base_octave + octave) * 12 + semitone
+                x = (octave * 12 + semitone) * semitone_width
+                
+                # Determine if it's a black key
+                is_black_key = semitone in [1, 3, 6, 8, 10]  # C#, D#, F#, G#, A#
+                
+                if is_black_key:
+                    # Draw black key
+                    key_width = semitone_width
+                    key_height = widget_height * 0.6  # Black keys are shorter
+                    self._draw_black_key(painter, x, key_width, key_height, midi_note)
+                else:
+                    # Draw white key
+                    key_width = semitone_width
+                    key_height = widget_height
+                    self._draw_white_key(painter, x, key_width, key_height, midi_note)
     
     def _draw_white_keys(self, painter: QPainter, key_width: float, key_height: float):
         """Draw white piano keys with realistic 3D effect"""
@@ -768,6 +778,56 @@ class PianoKeyboardDisplay(QWidget):
         
         # Draw main key surface
         painter.setPen(QPen(QColor(60, 60, 60), 1))  # Dark border for black keys
+        painter.setBrush(QBrush(base_color))
+        painter.drawRect(int(x), 0, int(width), int(height))
+        
+        # Draw subtle right edge shadow for 3D effect
+        shadow_width = 1
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QBrush(shadow_color))
+        painter.drawRect(int(x + width - shadow_width), 0, shadow_width, int(height))
+        
+        # Draw subtle bottom edge shadow
+        painter.drawRect(int(x), int(height - shadow_width), int(width), shadow_width)
+    
+    def _draw_white_key(self, painter: QPainter, x: float, width: float, height: float, midi_note: int):
+        """Draw a single white key"""
+        # Choose base color
+        if midi_note in self.pressed_notes:
+            base_color = self.pressed_color
+            shadow_color = QColor(base_color.red() - 30, base_color.green() - 30, base_color.blue() - 30)
+        else:
+            base_color = self.white_key_color
+            shadow_color = QColor(220, 220, 220)
+        
+        # Draw main key surface
+        painter.setPen(QPen(self.border_color, 1))
+        painter.setBrush(QBrush(base_color))
+        painter.drawRect(int(x), 0, int(width), int(height))
+        
+        # Draw subtle right edge shadow for 3D effect
+        shadow_width = 1
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QBrush(shadow_color))
+        painter.drawRect(int(x + width - shadow_width), 0, shadow_width, int(height))
+        
+        # Draw subtle bottom edge shadow
+        painter.drawRect(int(x), int(height - shadow_width), int(width), shadow_width)
+    
+    def _draw_black_key(self, painter: QPainter, x: float, width: float, height: float, midi_note: int):
+        """Draw a single black key"""
+        # Choose base color
+        if midi_note in self.pressed_notes:
+            base_color = self.pressed_color
+            shadow_color = QColor(max(0, base_color.red() - 40), 
+                                 max(0, base_color.green() - 40), 
+                                 max(0, base_color.blue() - 40))
+        else:
+            base_color = self.black_key_color
+            shadow_color = QColor(10, 10, 10)
+        
+        # Draw main key surface
+        painter.setPen(QPen(QColor(60, 60, 60), 1))
         painter.setBrush(QBrush(base_color))
         painter.drawRect(int(x), 0, int(width), int(height))
         
