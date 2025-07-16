@@ -326,42 +326,34 @@ class PianoRollWidget(QWidget):
         # Vertical lines for beats and measures
         ticks_per_beat = self.midi_project.ticks_per_beat if self.midi_project else 480
         
-        # Get current time signature (dynamic calculation)
+        # Get time signature for measure calculations
+        if self.midi_project and self.midi_project.time_signature_changes:
+            numerator, denominator = self.midi_project.get_time_signature_at_tick(self.visible_start_tick)
+        else:
+            numerator, denominator = 4, 4
+        
+        # Calculate ticks per measure and end tick
         if self.midi_project:
-            numerator, denominator = self.midi_project.get_current_time_signature()
+            ticks_per_measure = self.midi_project.calculate_ticks_per_measure(numerator, denominator)
         else:
-            numerator, denominator = 4, 4  # Default 4/4
+            # Fallback calculation
+            if denominator == 8:
+                beats_per_measure = numerator / 2
+                ticks_per_measure = int(ticks_per_beat * beats_per_measure)
+            else:
+                beats_per_measure = numerator * (4 / denominator)
+                ticks_per_measure = int(ticks_per_beat * beats_per_measure)
         
-        # Calculate ticks per measure based on actual time signature
-        # For 3/4: 3 beats per measure
-        # For 6/8: 6 eighth notes = 3 quarter note beats per measure  
-        # For 4/4: 4 beats per measure
-        if denominator == 8:
-            # For compound time (6/8, 9/8, 12/8), group eighth notes
-            beats_per_measure = numerator / 2  # 6/8 = 3 beats, 9/8 = 4.5 beats
-            ticks_per_measure = int(ticks_per_beat * beats_per_measure)
-        else:
-            # For simple time (4/4, 3/4, 2/4, 5/4)
-            beats_per_measure = numerator * (4 / denominator)  # Normalize to quarter note beats
-            ticks_per_measure = int(ticks_per_beat * beats_per_measure)
-        
-        
-        # Draw measure lines (numbers now handled by separate measure bar)
-        # Calculate the range of measures to draw based on visible area
+        # Calculate visible end tick
         grid_width = self.width() - grid_start_x
         current_visible_end_tick = self.visible_start_tick + int(grid_width / self.pixels_per_tick)
+        end_tick = current_visible_end_tick + ticks_per_measure
         
-        # Start from the measure that contains or precedes visible_start_tick
-        start_measure_tick = (self.visible_start_tick // ticks_per_measure) * ticks_per_measure
-        end_tick = current_visible_end_tick + ticks_per_measure  # Add padding
-        
-        for tick in range(start_measure_tick, end_tick, ticks_per_measure):
-            if tick >= self.visible_start_tick - ticks_per_measure:  # Include partially visible measures
-                x = self._tick_to_x(tick) + grid_start_x
-                if x >= grid_start_x and x <= self.width():  # Only draw if visible
-                    # Draw measure line
-                    painter.setPen(QColor(self.theme_colors.grid_line_measure))
-                    painter.drawLine(int(x), 0, int(x), height)
+        # Draw measure lines with time signature changes support
+        if self.midi_project and self.midi_project.time_signature_changes:
+            self._draw_measure_lines_with_time_signature_changes(painter, ticks_per_beat, grid_start_x, height, current_visible_end_tick)
+        else:
+            self._draw_measure_lines_simple(painter, ticks_per_beat, numerator, denominator, grid_start_x, height, current_visible_end_tick)
         
         # Draw beat lines (lighter, subdivision within measures)
         if denominator == 8:
@@ -3259,4 +3251,62 @@ class PianoRollWidget(QWidget):
                     self.update()
         except Exception as e:
             pass  # Silent fail for stability
+    
+    def _draw_measure_lines_simple(self, painter, ticks_per_beat: int, numerator: int, denominator: int, grid_start_x: int, height: int, end_tick: int):
+        """Draw measure lines with a single time signature"""
+        # Calculate ticks per measure using centralized method
+        if self.midi_project:
+            ticks_per_measure = self.midi_project.calculate_ticks_per_measure(numerator, denominator)
+        else:
+            # Fallback calculation
+            if denominator == 8:
+                beats_per_measure = numerator / 2
+                ticks_per_measure = int(ticks_per_beat * beats_per_measure)
+            else:
+                beats_per_measure = numerator * (4 / denominator)
+                ticks_per_measure = int(ticks_per_beat * beats_per_measure)
+        
+        # Calculate the range of measures to draw
+        start_measure_tick = (self.visible_start_tick // ticks_per_measure) * ticks_per_measure
+        
+        for tick in range(start_measure_tick, end_tick, ticks_per_measure):
+            if tick >= self.visible_start_tick - ticks_per_measure:
+                x = self._tick_to_x(tick) + grid_start_x
+                if x >= grid_start_x and x <= self.width():
+                    painter.setPen(QColor(self.theme_colors.grid_line_measure))
+                    painter.drawLine(int(x), 0, int(x), height)
+    
+    def _draw_measure_lines_with_time_signature_changes(self, painter, ticks_per_beat: int, grid_start_x: int, height: int, end_tick: int):
+        """Draw measure lines with time signature changes support"""
+        if not self.midi_project or not self.midi_project.time_signature_changes:
+            return
+            
+        time_sig_changes = sorted(self.midi_project.time_signature_changes, key=lambda x: x.tick)
+        
+        for i, ts_change in enumerate(time_sig_changes):
+            next_change_tick = time_sig_changes[i + 1].tick if i + 1 < len(time_sig_changes) else end_tick + 10000
+            
+            # Calculate ticks per measure for this time signature
+            numerator, denominator = ts_change.numerator, ts_change.denominator
+            if denominator == 8:
+                beats_per_measure = numerator / 2
+                ticks_per_measure = int(ticks_per_beat * beats_per_measure)
+            else:
+                beats_per_measure = numerator * (4 / denominator)
+                ticks_per_measure = int(ticks_per_beat * beats_per_measure)
+            
+            # Draw measures for this time signature section
+            section_start_tick = ts_change.tick
+            section_end_tick = min(next_change_tick, end_tick)
+            
+            # Find the first measure boundary at or after section_start_tick
+            first_measure_tick = ((section_start_tick + ticks_per_measure - 1) // ticks_per_measure) * ticks_per_measure
+            
+            # Draw measures in this section
+            for tick in range(first_measure_tick, section_end_tick, ticks_per_measure):
+                if tick >= self.visible_start_tick - ticks_per_measure:
+                    x = self._tick_to_x(tick) + grid_start_x
+                    if x >= grid_start_x and x <= self.width():
+                        painter.setPen(QColor(self.theme_colors.grid_line_measure))
+                        painter.drawLine(int(x), 0, int(x), height)
 

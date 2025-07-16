@@ -576,8 +576,9 @@ class PyDominoMainWindow(QMainWindow):
         # Connect track selection to piano roll
         self.track_list.track_selected.connect(self._on_track_selected)
         
-        # Set the default project in piano roll
+        # Set the default project in piano roll and measure bar
         self.piano_roll.set_midi_project(default_project)
+        self.measure_bar.set_midi_project(default_project)
         
         # Initialize unified audio routing coordinator (delayed to ensure all managers are ready)
         QTimer.singleShot(300, self._initialize_unified_audio_routing)
@@ -1031,8 +1032,8 @@ class PyDominoMainWindow(QMainWindow):
             self.piano_roll.midi_project.set_global_time_signature(numerator, denominator)
             # Force piano roll to redraw with new time signature
             self.piano_roll.update()
-            # Update measure bar as well
-            self.measure_bar.update()
+            # Notify measure bar of time signature change using proper notification method
+            self.measure_bar.on_time_signature_changed()
         
         self.logger.info(f"Time signature changed to {numerator}/{denominator}")
     

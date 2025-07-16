@@ -377,6 +377,18 @@ class MidiProject:
             return (ts.numerator, ts.denominator)
         return (4, 4)
     
+    def calculate_ticks_per_measure(self, numerator: int, denominator: int) -> int:
+        """Calculate ticks per measure for a given time signature"""
+        if denominator == 8:
+            # For compound time (6/8, 9/8, 12/8), group eighth notes
+            beats_per_measure = numerator / 2
+            ticks_per_measure = int(self.ticks_per_beat * beats_per_measure)
+        else:
+            # For simple time (4/4, 3/4, 2/4, 5/4)
+            beats_per_measure = numerator * (4 / denominator)
+            ticks_per_measure = int(self.ticks_per_beat * beats_per_measure)
+        return ticks_per_measure
+    
     def set_global_tempo(self, bpm: float):
         """Set global tempo (updates the first tempo change)"""
         if self.tempo_changes:

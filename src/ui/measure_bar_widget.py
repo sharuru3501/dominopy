@@ -49,6 +49,12 @@ class MeasureBarWidget(QWidget):
         # grid_start_x is fixed to piano_width for alignment
         self.update()
     
+    def on_time_signature_changed(self):
+        """Handle time signature changes - proper notification method"""
+        # Simply trigger a repaint with the updated time signature data
+        # The midi_project reference already contains the updated time signature
+        self.update()
+    
     def _tick_to_x(self, tick: int) -> float:
         """Convert MIDI tick to X coordinate (same as piano roll)"""
         return (tick - self.visible_start_tick) * self.grid_width_pixels
@@ -69,35 +75,40 @@ class MeasureBarWidget(QWidget):
         # Get time signature information
         ticks_per_beat = self.midi_project.ticks_per_beat if self.midi_project else 480
         
-        if self.midi_project:
-            numerator, denominator = self.midi_project.get_current_time_signature()
-        else:
-            numerator, denominator = 4, 4  # Default 4/4
-        
-        # Calculate ticks per measure (same logic as piano roll)
-        if denominator == 8:
-            # For compound time (6/8, 9/8, 12/8), group eighth notes
-            beats_per_measure = numerator / 2  # 6/8 = 3 beats, 9/8 = 4.5 beats
-            ticks_per_measure = int(ticks_per_beat * beats_per_measure)
-        else:
-            # For simple time (4/4, 3/4, 2/4, 5/4)
-            beats_per_measure = numerator * (4 / denominator)  # Normalize to quarter note beats
-            ticks_per_measure = int(ticks_per_beat * beats_per_measure)
-        
         # Set up font
         font = QFont("Arial", 11)
         font.setBold(True)
         painter.setFont(font)
         
-        # Draw measure lines and numbers
-        # Calculate the range of measures to draw, ensuring we cover the visible area
+        # Get current time signature dynamically
+        if self.midi_project:
+            numerator, denominator = self.midi_project.get_current_time_signature()
+        else:
+            numerator, denominator = 4, 4
+        
+        # Draw measure lines and numbers with time signature changes support
+        if self.midi_project and self.midi_project.time_signature_changes:
+            self._draw_measures_with_time_signature_changes(painter, ticks_per_beat)
+        else:
+            self._draw_measures_simple(painter, ticks_per_beat, numerator, denominator)
+    
+    def _draw_measures_simple(self, painter: QPainter, ticks_per_beat: int, numerator: int, denominator: int):
+        """Draw measures with a single time signature"""
+        # Use centralized calculation method
+        if self.midi_project:
+            ticks_per_measure = self.midi_project.calculate_ticks_per_measure(numerator, denominator)
+        else:
+            # Fallback calculation for when midi_project is not available
+            if denominator == 8:
+                beats_per_measure = numerator / 2
+                ticks_per_measure = int(ticks_per_beat * beats_per_measure)
+            else:
+                beats_per_measure = numerator * (4 / denominator)
+                ticks_per_measure = int(ticks_per_beat * beats_per_measure)
+        
+        # Calculate the range of measures to draw
         start_measure_tick = (self.visible_start_tick // ticks_per_measure) * ticks_per_measure
         end_tick = self.visible_end_tick + ticks_per_measure
-        
-        # Debug information (can be removed later)
-        # print(f"DEBUG MeasureBar: visible_start_tick={self.visible_start_tick}, visible_end_tick={self.visible_end_tick}")
-        # print(f"DEBUG MeasureBar: ticks_per_measure={ticks_per_measure}, start_measure_tick={start_measure_tick}, end_tick={end_tick}")
-        # print(f"DEBUG MeasureBar: widget width={self.width()}, grid_start_x={self.grid_start_x}")
         
         for tick in range(start_measure_tick, end_tick, ticks_per_measure):
             # Calculate the actual measure number (1-based)
@@ -105,22 +116,108 @@ class MeasureBarWidget(QWidget):
             
             # Only draw if this measure line is visible
             if tick >= self.visible_start_tick - ticks_per_measure:
-                x = self._tick_to_x(tick) + self.grid_start_x
-                
-                # Only draw if the x position is within the visible area
-                if x >= self.grid_start_x and x <= self.width():
-                    # Draw black vertical measure line
-                    painter.setPen(QColor("#000000"))  # Black line
-                    painter.drawLine(int(x), 0, int(x), self.height())
-                    
-                    # Draw measure number
-                    painter.setPen(QColor("#000000"))  # Black text
-                    text_rect = painter.fontMetrics().boundingRect(str(measure_number))
-                    
-                    # Position text just to the right of the measure line
-                    text_x = int(x) + 3  # Small offset from the line
-                    text_y = (self.height() + text_rect.height()) // 2 - 2
-                    
-                    # Only draw text if it fits within the widget bounds
-                    if text_x + text_rect.width() <= self.width():
-                        painter.drawText(text_x, text_y, str(measure_number))
+                self._draw_measure_line_and_number(painter, tick, measure_number)
+    
+    def _draw_measures_with_time_signature_changes(self, painter: QPainter, ticks_per_beat: int):
+        """Draw measures with time signature changes support"""
+        current_tick = 0
+        measure_number = 1
+        
+        # Get all time signature changes sorted by tick
+        time_sig_changes = sorted(self.midi_project.time_signature_changes, key=lambda x: x.tick)
+        
+        for i, ts_change in enumerate(time_sig_changes):
+            # Get the next time signature change tick, or use a large number if this is the last one
+            next_change_tick = time_sig_changes[i + 1].tick if i + 1 < len(time_sig_changes) else max(self.visible_end_tick + 10000, 100000)
+            
+            # Calculate ticks per measure for this time signature
+            numerator, denominator = ts_change.numerator, ts_change.denominator
+            ticks_per_measure = self.midi_project.calculate_ticks_per_measure(numerator, denominator)
+            
+            # Draw measures for this time signature section
+            section_start_tick = ts_change.tick
+            section_end_tick = min(next_change_tick, self.visible_end_tick + ticks_per_measure)
+            
+            # Align to measure boundaries
+            if section_start_tick > current_tick:
+                # If there's a gap, fill it with the previous time signature
+                current_tick = section_start_tick
+            
+            # Find the first measure boundary at or after section_start_tick
+            first_measure_tick = ((section_start_tick + ticks_per_measure - 1) // ticks_per_measure) * ticks_per_measure
+            
+            # Calculate measure number for the first measure in this section
+            if section_start_tick == 0:
+                measure_number = 1
+            else:
+                # Count measures from the beginning up to this point
+                measure_number = self._calculate_measure_number_at_tick(section_start_tick, ticks_per_beat)
+            
+            # Draw measures in this section
+            for tick in range(first_measure_tick, section_end_tick, ticks_per_measure):
+                if tick >= self.visible_start_tick - ticks_per_measure and tick <= self.visible_end_tick + ticks_per_measure:
+                    # Calculate correct measure number for this tick
+                    actual_measure_number = self._calculate_measure_number_at_tick(tick, ticks_per_beat)
+                    self._draw_measure_line_and_number(painter, tick, actual_measure_number)
+    
+    def _calculate_measure_number_at_tick(self, target_tick: int, ticks_per_beat: int) -> int:
+        """Calculate the measure number at a given tick, considering time signature changes"""
+        if not self.midi_project or not self.midi_project.time_signature_changes:
+            # Fallback to simple calculation
+            return (target_tick // (ticks_per_beat * 4)) + 1
+        
+        current_tick = 0
+        measure_number = 1
+        time_sig_changes = sorted(self.midi_project.time_signature_changes, key=lambda x: x.tick)
+        
+        for i, ts_change in enumerate(time_sig_changes):
+            next_change_tick = time_sig_changes[i + 1].tick if i + 1 < len(time_sig_changes) else float('inf')
+            
+            # Calculate ticks per measure for this time signature
+            numerator, denominator = ts_change.numerator, ts_change.denominator
+            ticks_per_measure = self.midi_project.calculate_ticks_per_measure(numerator, denominator)
+            
+            # Determine the section boundaries
+            section_start = max(current_tick, ts_change.tick)
+            section_end = min(next_change_tick, target_tick)
+            
+            # If the target tick is within this section
+            if section_start <= target_tick < next_change_tick:
+                # Count complete measures from section start to target tick
+                if section_start < target_tick:
+                    ticks_from_section_start = target_tick - section_start
+                    complete_measures_in_section = ticks_from_section_start // ticks_per_measure
+                    measure_number += complete_measures_in_section
+                return measure_number
+            
+            # If the target tick is beyond this section, count all measures in this section
+            if target_tick >= next_change_tick:
+                if section_start < next_change_tick:
+                    ticks_in_section = next_change_tick - section_start
+                    complete_measures_in_section = ticks_in_section // ticks_per_measure
+                    measure_number += complete_measures_in_section
+                    current_tick = next_change_tick
+        
+        return measure_number
+    
+    def _draw_measure_line_and_number(self, painter: QPainter, tick: int, measure_number: int):
+        """Draw a single measure line and number"""
+        x = self._tick_to_x(tick) + self.grid_start_x
+        
+        # Only draw if the x position is within the visible area
+        if x >= self.grid_start_x and x <= self.width():
+            # Draw black vertical measure line
+            painter.setPen(QColor("#000000"))  # Black line
+            painter.drawLine(int(x), 0, int(x), self.height())
+            
+            # Draw measure number
+            painter.setPen(QColor("#000000"))  # Black text
+            text_rect = painter.fontMetrics().boundingRect(str(measure_number))
+            
+            # Position text just to the right of the measure line
+            text_x = int(x) + 3  # Small offset from the line
+            text_y = (self.height() + text_rect.height()) // 2 - 2
+            
+            # Only draw text if it fits within the widget bounds
+            if text_x + text_rect.width() <= self.width():
+                painter.drawText(text_x, text_y, str(measure_number))
