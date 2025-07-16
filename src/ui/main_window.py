@@ -707,7 +707,7 @@ class PyDominoMainWindow(QMainWindow):
     def _on_virtual_key_pressed(self, pitch: int, velocity: int):
         """Handle virtual keyboard key press"""
         from src.track_manager import get_track_manager
-        from src.per_track_audio_router import get_per_track_audio_router
+        from src.audio_routing_coordinator import get_audio_routing_coordinator
         from src.midi_data_model import MidiNote
         
         # Get current active track
@@ -716,9 +716,9 @@ class PyDominoMainWindow(QMainWindow):
             active_track_index = track_manager.get_active_track_index()
             self.logger.info(f"Virtual keyboard: Active track index: {active_track_index}")
             
-            # Try per-track audio routing
-            per_track_router = get_per_track_audio_router()
-            if per_track_router:
+            # Try unified audio routing coordinator
+            coordinator = get_audio_routing_coordinator()
+            if coordinator:
                 # Check track audio source
                 from src.audio_source_manager import get_audio_source_manager
                 audio_source_manager = get_audio_source_manager()
@@ -738,20 +738,20 @@ class PyDominoMainWindow(QMainWindow):
                     channel=active_track_index % 16
                 )
                 
-                self.logger.info(f"Virtual keyboard: Calling per_track_router.play_note({active_track_index}, pitch={pitch})")
-                success = per_track_router.play_note(active_track_index, virtual_note)
-                self.logger.info(f"Virtual keyboard: per_track_router.play_note returned: {success}")
+                self.logger.info(f"Virtual keyboard: Calling coordinator.play_note({active_track_index}, pitch={pitch})")
+                success = coordinator.play_note(active_track_index, virtual_note)
+                self.logger.info(f"Virtual keyboard: coordinator.play_note returned: {success}")
                 if success:
                     self.logger.info(f"Virtual keyboard: Playing pitch {pitch} on track {active_track_index}")
                     return
         
-        # No per-track routing available - respect MIDI routing settings
-        self.logger.info(f"Virtual keyboard: No per-track routing available for pitch {pitch}")
+        # No audio routing available - respect MIDI routing settings
+        self.logger.info(f"Virtual keyboard: No audio routing available for pitch {pitch}")
     
     def _on_virtual_key_released(self, pitch: int):
         """Handle virtual keyboard key release"""
         from src.track_manager import get_track_manager
-        from src.per_track_audio_router import get_per_track_audio_router
+        from src.audio_routing_coordinator import get_audio_routing_coordinator
         from src.midi_data_model import MidiNote
         
         # Get current active track
@@ -759,9 +759,9 @@ class PyDominoMainWindow(QMainWindow):
         if track_manager:
             active_track_index = track_manager.get_active_track_index()
             
-            # Try per-track audio routing
-            per_track_router = get_per_track_audio_router()
-            if per_track_router:
+            # Try unified audio routing coordinator
+            coordinator = get_audio_routing_coordinator()
+            if coordinator:
                 # Create a note for the virtual keyboard
                 virtual_note = MidiNote(
                     pitch=pitch,
@@ -771,13 +771,13 @@ class PyDominoMainWindow(QMainWindow):
                     channel=active_track_index % 16
                 )
                 
-                success = per_track_router.stop_note(active_track_index, virtual_note)
+                success = coordinator.stop_note(active_track_index, virtual_note)
                 if success:
                     self.logger.info(f"Virtual keyboard: Stopped pitch {pitch} on track {active_track_index}")
                     return
         
-        # No per-track routing available - respect MIDI routing settings
-        self.logger.info(f"Virtual keyboard: No per-track routing available to stop pitch {pitch}")
+        # No audio routing available - respect MIDI routing settings
+        self.logger.info(f"Virtual keyboard: No audio routing available to stop pitch {pitch}")
     
     def _update_virtual_keyboard_track_info(self):
         """Update virtual keyboard with current track information"""
