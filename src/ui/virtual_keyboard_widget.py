@@ -670,12 +670,12 @@ class PianoKeyboardDisplay(QWidget):
         widget_width = self.width()
         widget_height = self.height()
         
-        # Piano key dimensions
+        # Piano key dimensions (more realistic proportions)
         total_white_keys = 7 * self.visible_octaves  # 7 white keys per octave
         white_key_width = widget_width / total_white_keys
         white_key_height = widget_height
-        black_key_width = white_key_width * 0.6
-        black_key_height = white_key_height * 0.6
+        black_key_width = white_key_width * 0.55  # More realistic black key width
+        black_key_height = white_key_height * 0.65  # More realistic black key height
         
         # Draw white keys first
         self._draw_white_keys(painter, white_key_width, white_key_height)
@@ -684,7 +684,7 @@ class PianoKeyboardDisplay(QWidget):
         self._draw_black_keys(painter, white_key_width, black_key_width, black_key_height)
     
     def _draw_white_keys(self, painter: QPainter, key_width: float, key_height: float):
-        """Draw white piano keys"""
+        """Draw white piano keys with realistic 3D effect"""
         white_key_pattern = [0, 2, 4, 5, 7, 9, 11]  # C D E F G A B
         
         for octave in range(self.visible_octaves):
@@ -692,22 +692,35 @@ class PianoKeyboardDisplay(QWidget):
                 midi_note = (self.base_octave + octave) * 12 + note_offset
                 x = (octave * 7 + i) * key_width
                 
-                # Choose color
+                # Choose base color
                 if midi_note in self.pressed_notes:
-                    color = self.pressed_color
+                    base_color = self.pressed_color
+                    # Darker shadow when pressed
+                    shadow_color = QColor(base_color.red() - 30, base_color.green() - 30, base_color.blue() - 30)
                 else:
-                    color = self.white_key_color
+                    base_color = self.white_key_color
+                    # Light gray shadow for unpressed keys
+                    shadow_color = QColor(220, 220, 220)
                 
-                # Draw key
+                # Draw main key surface
                 painter.setPen(QPen(self.border_color, 1))
-                painter.setBrush(QBrush(color))
+                painter.setBrush(QBrush(base_color))
                 painter.drawRect(int(x), 0, int(key_width), int(key_height))
+                
+                # Draw subtle right edge shadow for 3D effect
+                shadow_width = 2
+                painter.setPen(Qt.NoPen)
+                painter.setBrush(QBrush(shadow_color))
+                painter.drawRect(int(x + key_width - shadow_width), 0, shadow_width, int(key_height))
+                
+                # Draw subtle bottom edge shadow
+                painter.drawRect(int(x), int(key_height - shadow_width), int(key_width), shadow_width)
     
     def _draw_black_keys(self, painter: QPainter, white_key_width: float, 
                         black_key_width: float, black_key_height: float):
-        """Draw black piano keys"""
-        # Black key positions relative to white keys: after C, D, F, G, A
-        black_key_pattern = [0.7, 1.7, 3.7, 4.7, 5.7]  # Relative positions
+        """Draw black piano keys with realistic positioning"""
+        # Realistic black key positions relative to white keys (more accurate piano layout)
+        black_key_pattern = [0.65, 1.35, 3.5, 4.5, 5.35]  # More realistic positions
         black_note_offsets = [1, 3, 6, 8, 10]  # C# D# F# G# A#
         
         for octave in range(self.visible_octaves):
@@ -715,13 +728,26 @@ class PianoKeyboardDisplay(QWidget):
                 midi_note = (self.base_octave + octave) * 12 + note_offset
                 x = (octave * 7 + pos) * white_key_width - black_key_width / 2
                 
-                # Choose color
+                # Choose base color
                 if midi_note in self.pressed_notes:
-                    color = self.pressed_color
+                    base_color = self.pressed_color
+                    # Even darker shadow when pressed
+                    shadow_color = QColor(base_color.red() - 40, base_color.green() - 40, base_color.blue() - 40)
                 else:
-                    color = self.black_key_color
+                    base_color = self.black_key_color
+                    # Very dark shadow for black keys
+                    shadow_color = QColor(10, 10, 10)
                 
-                # Draw key
-                painter.setPen(QPen(self.border_color, 1))
-                painter.setBrush(QBrush(color))
+                # Draw main key surface
+                painter.setPen(QPen(QColor(80, 80, 80), 1))  # Darker border for black keys
+                painter.setBrush(QBrush(base_color))
                 painter.drawRect(int(x), 0, int(black_key_width), int(black_key_height))
+                
+                # Draw subtle right edge shadow for 3D effect
+                shadow_width = 1
+                painter.setPen(Qt.NoPen)
+                painter.setBrush(QBrush(shadow_color))
+                painter.drawRect(int(x + black_key_width - shadow_width), 0, shadow_width, int(black_key_height))
+                
+                # Draw subtle bottom edge shadow
+                painter.drawRect(int(x), int(black_key_height - shadow_width), int(black_key_width), shadow_width)
