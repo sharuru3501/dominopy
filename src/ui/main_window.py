@@ -140,6 +140,37 @@ class PyDominoMainWindow(QMainWindow):
         create_test_action.setToolTip("Create a simple test song for playback testing")
         create_test_action.triggered.connect(self._create_test_song)
         
+        # Edit Menu
+        edit_menu = menu_bar.addMenu("&Edit")
+        
+        undo_action = edit_menu.addAction("&Undo")
+        undo_action.setShortcut("Ctrl+Z")
+        undo_action.triggered.connect(self._undo)
+        
+        redo_action = edit_menu.addAction("&Redo")
+        redo_action.setShortcut("Ctrl+Y")
+        redo_action.triggered.connect(self._redo)
+        
+        edit_menu.addSeparator()
+        
+        copy_action = edit_menu.addAction("&Copy")
+        copy_action.setShortcut("Ctrl+C")
+        copy_action.triggered.connect(self._copy)
+        
+        cut_action = edit_menu.addAction("Cu&t")
+        cut_action.setShortcut("Ctrl+X")
+        cut_action.triggered.connect(self._cut)
+        
+        paste_action = edit_menu.addAction("&Paste")
+        paste_action.setShortcut("Ctrl+V")
+        paste_action.triggered.connect(self._paste)
+        
+        edit_menu.addSeparator()
+        
+        select_all_action = edit_menu.addAction("Select &All")
+        select_all_action.setShortcut("Ctrl+A")
+        select_all_action.triggered.connect(self._select_all)
+        
         # Audio Menu
         audio_menu = menu_bar.addMenu("&Audio")
         
@@ -172,38 +203,6 @@ class PyDominoMainWindow(QMainWindow):
         play_pause_action = playback_menu.addAction("&Play/Pause")
         play_pause_action.setToolTip("Toggle playback (Space key)")
         play_pause_action.triggered.connect(self._toggle_playback)
-        
-        # Edit Menu
-        edit_menu = menu_bar.addMenu("&Edit")
-        
-        undo_action = edit_menu.addAction("&Undo")
-        undo_action.setShortcut("Ctrl+Z")
-        undo_action.triggered.connect(self._undo)
-        
-        redo_action = edit_menu.addAction("&Redo")
-        redo_action.setShortcut("Ctrl+Y")
-        redo_action.triggered.connect(self._redo)
-        
-        edit_menu.addSeparator()
-        
-        copy_action = edit_menu.addAction("&Copy")
-        copy_action.setShortcut("Ctrl+C")
-        copy_action.triggered.connect(self._copy)
-        
-        cut_action = edit_menu.addAction("Cu&t")
-        cut_action.setShortcut("Ctrl+X")
-        cut_action.triggered.connect(self._cut)
-        
-        paste_action = edit_menu.addAction("&Paste")
-        paste_action.setShortcut("Ctrl+V")
-        paste_action.triggered.connect(self._paste)
-        
-        edit_menu.addSeparator()
-        
-        select_all_action = edit_menu.addAction("Select &All")
-        select_all_action.setShortcut("Ctrl+A")
-        select_all_action.triggered.connect(self._select_all)
-        
         
         # Settings Menu
         settings_menu = menu_bar.addMenu("&Settings")

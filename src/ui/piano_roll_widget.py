@@ -1656,7 +1656,11 @@ class PianoRollWidget(QWidget):
         return self.edit_mode_manager
     
     def _draw_piano_keyboard(self, painter: QPainter, height: int):
-        """Draw piano keyboard with black keys positioned between white keys"""
+        """Draw piano keyboard on the left side"""
+        # Note names and black key pattern
+        note_names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+        black_keys = [1, 3, 6, 8, 10]  # C#, D#, F#, G#, A#
+        
         painter.save()
         
         # Ensure theme colors are loaded
@@ -1671,38 +1675,47 @@ class PianoRollWidget(QWidget):
         # Background for piano area
         painter.fillRect(0, 0, self.piano_width, height, QColor(self.theme_colors.background))
         
-        # Draw all keys in chromatic order: C, C#, D, D#, E, F, F#, G, G#, A, A#, B
+        # Draw white keys first (extended range)
         for pitch in range(0, 120):
-            y = self._pitch_to_y(pitch)
-            key_height = self.pixels_per_pitch
-            
-            note_in_octave = pitch % 12
-            is_black_key = note_in_octave in [1, 3, 6, 8, 10]  # C#, D#, F#, G#, A#
-            
-            if is_black_key:
-                # Draw black key (narrower)
-                black_key_width = int(self.piano_width * 0.5)
-                key_color = QColor(self.theme_colors.piano_black_key)
+            note_index = pitch % 12
+            if note_index not in black_keys:  # White key
+                y = self._pitch_to_y(pitch)
+                key_height = self.pixels_per_pitch
                 
-                painter.fillRect(0, int(y), black_key_width, int(key_height), key_color)
-                painter.setPen(QColor(self.theme_colors.piano_separator))
-                painter.drawRect(0, int(y), black_key_width, int(key_height))
-            else:
-                # Draw white key (full width)
+                # White key color
                 key_color = QColor(self.theme_colors.piano_white_key)
                 
                 painter.fillRect(0, int(y), self.piano_width - 1, int(key_height), key_color)
+                
+                # Key border
                 painter.setPen(QColor(self.theme_colors.piano_separator))
                 painter.drawRect(0, int(y), self.piano_width - 1, int(key_height))
                 
                 # Note label for C notes
-                if note_in_octave == 0:  # C note
+                if note_index == 0:  # C note
                     octave = (pitch // 12) - 1
                     font = QFont()
                     font.setPointSize(8)
                     painter.setFont(font)
                     painter.setPen(QColor(self.theme_colors.piano_black_key))
                     painter.drawText(5, int(y + key_height - 3), f"C{octave}")
+        
+        # Draw black keys on top (extended range)
+        for pitch in range(0, 120):
+            note_index = pitch % 12
+            if note_index in black_keys:  # Black key
+                y = self._pitch_to_y(pitch)
+                key_height = self.pixels_per_pitch
+                black_key_width = int(self.piano_width * 0.5)  # Make black keys shorter
+                
+                # Black key color
+                key_color = QColor(self.theme_colors.piano_black_key)
+                
+                painter.fillRect(0, int(y), black_key_width, int(key_height), key_color)
+                
+                # Key border
+                painter.setPen(QColor(self.theme_colors.piano_separator))
+                painter.drawRect(0, int(y), black_key_width, int(key_height))
         
         # Separator line between piano and grid
         painter.setPen(QColor(self.theme_colors.piano_separator))
