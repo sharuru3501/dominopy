@@ -68,9 +68,16 @@ class PianoRollWidget(QWidget):
         self.resizing_multiple_notes: bool = False
         self.multi_drag_start_positions: Dict[MidiNote, tuple] = {}  # note -> (start_tick, pitch)
         self.multi_resize_start_data: Dict[MidiNote, tuple] = {}     # note -> (start_tick, end_tick)
+        
+        # Multi-note resize - always resize all selected notes proportionally
+        self.primary_resize_note: MidiNote = None  # The note being directly dragged
 
         # Quantization unit (e.g., 16th note by default)
         self.quantize_grid_ticks = 480 // 4 # Default to 16th note (480 ticks/beat / 4 = 120 ticks)
+        
+        # Grid snap control
+        self.snap_enabled = True  # Toggle for grid snapping
+        self.modifier_keys_pressed = set()  # Track pressed modifier keys
         
         # Grid subdivision settings
         self.grid_subdivision_type = "sixteenth"  # Default subdivision
@@ -115,6 +122,9 @@ class PianoRollWidget(QWidget):
         
         # Enable focus to receive keyboard events
         self.setFocusPolicy(Qt.StrongFocus)
+        
+        # Enable mouse tracking for modifier key detection
+        self.setMouseTracking(True)
         
         # Parameter selection UI will be handled by the main window toolbar
         
@@ -515,8 +525,8 @@ class PianoRollWidget(QWidget):
             clicked_tick = self._x_to_tick(clicked_x)
             clicked_pitch = self._y_to_pitch(clicked_y)
 
-            # Quantize clicked_tick to the nearest grid unit
-            clicked_tick = round(clicked_tick / self.quantize_grid_ticks) * self.quantize_grid_ticks
+            # Apply grid snapping if enabled
+            clicked_tick = self._apply_grid_snap(clicked_tick, event.modifiers())
 
             # Ensure clicked_tick is not negative
             clicked_tick = max(0, clicked_tick)
@@ -903,6 +913,30 @@ class PianoRollWidget(QWidget):
         self.ticks_per_subdivision = ticks_per_subdivision
         self.update()  # Redraw with new subdivision
     
+    def _apply_grid_snap(self, tick: int, modifiers=None) -> int:
+        """Apply grid snapping based on current settings and modifier keys"""
+        # Check if Alt/Option key disables snapping
+        if modifiers and (modifiers & Qt.AltModifier):
+            return tick  # No snapping when Alt/Option is pressed
+        
+        # Check global snap setting
+        if not self.snap_enabled:
+            return tick  # No snapping when globally disabled
+        
+        # Apply quantization
+        return round(tick / self.quantize_grid_ticks) * self.quantize_grid_ticks
+    
+    def toggle_grid_snap(self):
+        """Toggle grid snapping on/off"""
+        self.snap_enabled = not self.snap_enabled
+        print(f"Grid snap {'enabled' if self.snap_enabled else 'disabled'}")
+        self.update()  # Visual feedback might be needed
+    
+    def set_grid_snap(self, enabled: bool):
+        """Set grid snapping state"""
+        self.snap_enabled = enabled
+        self.update()
+    
     def _copy_selected_notes(self):
         """Copy selected notes to clipboard"""
         if self.selected_notes:
@@ -970,8 +1004,8 @@ class PianoRollWidget(QWidget):
             target_tick = min(note.start_tick for note in self.selected_notes)
             target_pitch = min(note.pitch for note in self.selected_notes)
             source_description = f"selected notes position at tick {target_tick}, pitch {target_pitch}"
-        # Quantize target tick
-        target_tick = round(target_tick / self.quantize_grid_ticks) * self.quantize_grid_ticks
+        # Apply grid snapping to target tick
+        target_tick = self._apply_grid_snap(target_tick)
         # Get notes from clipboard
         notes_to_paste = global_clipboard.paste_notes(target_tick, target_pitch)
         
@@ -1209,6 +1243,9 @@ class PianoRollWidget(QWidget):
                     # Start resize operation (single or multi-note)
                     self.resizing_multiple_notes = True
                     self.resizing_left_edge = is_left_edge
+                    self.primary_resize_note = clicked_note
+                    
+                    # Always resize all selected notes proportionally
                     
                     # Store original data for all selected notes
                     self.multi_resize_start_data = {}
@@ -1237,6 +1274,9 @@ class PianoRollWidget(QWidget):
                     # Start resize operation
                     self.resizing_multiple_notes = True
                     self.resizing_left_edge = is_left_edge
+                    self.primary_resize_note = clicked_note
+                    
+                    # Always resize all selected notes proportionally
                     
                     # Store original data
                     self.multi_resize_start_data = {}
@@ -1296,8 +1336,8 @@ class PianoRollWidget(QWidget):
 
             # Update note position
             new_start_tick = self.drag_start_note_pos[0] + delta_ticks
-            # Quantize new_start_tick for dragging
-            new_start_tick = round(new_start_tick / self.quantize_grid_ticks) * self.quantize_grid_ticks
+            # Apply grid snapping if enabled
+            new_start_tick = self._apply_grid_snap(new_start_tick)
 
             new_pitch = self.drag_start_note_pos[1] - delta_pitch # Invert delta_pitch for actual pitch
 
@@ -1321,8 +1361,8 @@ class PianoRollWidget(QWidget):
             # Calculate new start_tick based on current mouse position
             current_tick_at_mouse = self._x_to_tick(event.position().x())
 
-            # Quantize new start_tick
-            new_start_tick = round(current_tick_at_mouse / self.quantize_grid_ticks) * self.quantize_grid_ticks
+            # Apply grid snapping to new start_tick
+            new_start_tick = self._apply_grid_snap(current_tick_at_mouse)
 
             # Ensure new_start_tick is not negative
             new_start_tick = max(0, new_start_tick)
@@ -1350,8 +1390,8 @@ class PianoRollWidget(QWidget):
             # Calculate new end_tick based on current mouse position
             current_tick_at_mouse = self._x_to_tick(event.position().x())
 
-            # Quantize new end_tick
-            new_end_tick = round(current_tick_at_mouse / self.quantize_grid_ticks) * self.quantize_grid_ticks
+            # Apply grid snapping to new end_tick
+            new_end_tick = self._apply_grid_snap(current_tick_at_mouse)
 
             # Ensure minimum duration (e.g., 1 tick)
             min_duration_ticks = self.quantize_grid_ticks # At least one quantized unit
@@ -1408,8 +1448,8 @@ class PianoRollWidget(QWidget):
                 new_start_tick = original_start_tick + delta_ticks
                 new_pitch = original_pitch + delta_pitch
                 
-                # Quantize new position
-                new_start_tick = round(new_start_tick / self.quantize_grid_ticks) * self.quantize_grid_ticks
+                # Apply grid snapping to new position
+                new_start_tick = self._apply_grid_snap(new_start_tick)
                 new_pitch = max(0, min(127, int(round(new_pitch))))  # Clamp to MIDI range
                 
                 # Calculate duration to preserve note length
@@ -1423,43 +1463,39 @@ class PianoRollWidget(QWidget):
         self.update()
     
     def _handle_multi_note_resize(self, event):
-        """Handle resizing multiple selected notes with relative scaling"""
-        if not self.multi_resize_start_data:
+        """Handle resizing all selected notes proportionally"""
+        if not self.multi_resize_start_data or not self.primary_resize_note:
             return
         
         current_x = event.position().x()
         current_tick = self._x_to_tick(current_x)
         
-        # Quantize the target tick
-        quantized_tick = round(current_tick / self.quantize_grid_ticks) * self.quantize_grid_ticks
+        # Apply grid snapping to target tick
+        quantized_tick = self._apply_grid_snap(current_tick, event.modifiers())
         
-        # Find a reference note (first note) to calculate the scaling factor
-        reference_note = None
-        reference_original_data = None
+        # Always resize all notes proportionally
+        self._handle_proportional_multi_resize(quantized_tick)
         
-        for note in self.selected_notes:
-            if note in self.multi_resize_start_data:
-                reference_note = note
-                reference_original_data = self.multi_resize_start_data[note]
-                break
-        
-        if not reference_note or not reference_original_data:
-            return
-        
-        ref_original_start, ref_original_end = reference_original_data
+        self.update()
+    
+    
+    def _handle_proportional_multi_resize(self, quantized_tick: int):
+        """Resize all selected notes proportionally"""
+        # Find a reference note (the primary note) to calculate the scaling factor
+        ref_note = self.primary_resize_note
+        ref_original_start, ref_original_end = self.multi_resize_start_data[ref_note]
         ref_original_duration = ref_original_end - ref_original_start
         
-        # Calculate scaling factor based on reference note
+        # Calculate the scale factor based on how much the reference note has changed
         if self.resizing_left_edge:
             # Left edge resize - calculate new start position and scaling
             new_ref_start = max(0, quantized_tick)
             min_duration = self.quantize_grid_ticks
             
             # Ensure minimum duration for reference note
-            if new_ref_start >= ref_original_end - min_duration:
+            if ref_original_end - new_ref_start < min_duration:
                 new_ref_start = ref_original_end - min_duration
             
-            # Calculate scale factor based on duration change
             new_ref_duration = ref_original_end - new_ref_start
             scale_factor = new_ref_duration / ref_original_duration if ref_original_duration > 0 else 1.0
             
@@ -1470,6 +1506,28 @@ class PianoRollWidget(QWidget):
             # Calculate scale factor based on duration change
             new_ref_duration = new_ref_end - ref_original_start
             scale_factor = new_ref_duration / ref_original_duration if ref_original_duration > 0 else 1.0
+        
+        # Apply scaling to all selected notes
+        for note in self.selected_notes:
+            if note in self.multi_resize_start_data:
+                original_start_tick, original_end_tick = self.multi_resize_start_data[note]
+                original_duration = original_end_tick - original_start_tick
+                
+                if self.resizing_left_edge:
+                    # Scale duration and adjust start position
+                    new_duration = max(self.quantize_grid_ticks, int(original_duration * scale_factor))
+                    note.start_tick = original_end_tick - new_duration
+                    note.end_tick = original_end_tick
+                    
+                    # Ensure non-negative start_tick
+                    if note.start_tick < 0:
+                        note.start_tick = 0
+                        note.end_tick = new_duration
+                else:
+                    # Scale duration and adjust end position
+                    new_duration = max(self.quantize_grid_ticks, int(original_duration * scale_factor))
+                    note.start_tick = original_start_tick
+                    note.end_tick = original_start_tick + new_duration
         
         # Apply scaling to all selected notes
         for note in self.selected_notes:
