@@ -6,6 +6,312 @@ PyDominoは、PySide6を使用したクロスプラットフォーム対応のMI
 
 ## 開発履歴
 
+### 2025-07-23: 仮想キーボードUIモダン化とSustainペダル機能実装
+**UI/UX大幅改善**: 見やすく美しいモダンデザインへの全面リニューアル + Logic Pro準拠機能追加
+
+#### 🎨 仮想キーボードUIモダン化
+**実装目標**: 視認性向上と現代的なデザインへの全面改修
+
+**実装内容:**
+
+**1. 鍵盤キーラベルの改善**
+- フォントサイズ拡大: 特殊文字（; :）16px/14px、通常文字14px/12px
+- 特殊文字の視認性向上: 深い青色（白鍵）、明るい黄色（黒鍵）
+- モダンな色彩設計とコントラスト最適化
+
+**2. Controlsパネルの大幅改善**
+- 横並びレイアウト採用: Octave/Velocity/Sustain を効率的配置
+- フォントサイズ統一拡大: 12px太字（各ラベル）
+- 視覚的キーボードキー描画: 35x25pxの3Dキーボタン表示
+- Track情報・Sustain表示の可読性向上
+
+**3. Chord Display & Harmonic Analysis統合**
+- 横並び配置でスペース効率化
+- フォントサイズ最適化:
+  - Chord notes: 10px → 12px
+  - Interval analysis: 11px → 13px  
+  - Key suggestion: 10px → 12px
+- パディング増加と最小高さ設定
+
+**技術的実装:**
+```python
+def _create_keyboard_key_display(self, keys, functions):
+    # 直感的キー・機能ペアリング
+    group_layout.setSpacing(3)  # キーと機能記号を密着配置
+    func_label.setFont(QFont("Arial", 18, QFont.Bold))  # 機能記号18px
+    # レイアウト: [Z]− [X]+ [C]− [V]+ [Tab]Toggle
+```
+
+**4. 段階的UI改善プロセス**
+- **Phase 1**: 基本フォントサイズ拡大（; : キー16px/14px）
+- **Phase 2**: Controls横並びレイアウト + 視覚的キーボードキー描画
+- **Phase 3**: Chord Display & Harmonic Analysis横並び配置
+- **Phase 4**: スペース有効活用とフォント・色彩統一
+- **Phase 5**: 直感的キー・機能ペアリング（最終調整）
+
+#### 📊 UI改善結果
+- **視認性**: 全フォントサイズ統一拡大により大幅改善（最大18px）
+- **操作性**: 視覚的キーボードキー + 直感的配置で完璧な理解
+- **デザイン**: モダンで統一感のある美しいUI（統一色彩・角丸6px）
+- **効率性**: 横並びレイアウトでスペース活用最適化
+- **直感性**: キーと機能が視覚的に一体化（3px間隔）
+
+**修正ファイル:**
+- `src/ui/virtual_keyboard_widget.py`: 全面的UIモダン化実装
+
+### 2025-07-23: 仮想キーボードSustainペダル機能実装
+**Logic Pro準拠機能追加**: TabキーによるSustainペダル機能とJISキーボード最適化
+
+#### 🎹 実装目標
+- Logic Pro準拠のTabキーSustainペダル機能
+- 本格的な音響持続効果の実装
+- MacのJISキーボードでの動作保証
+- 視覚的フィードバックの提供
+
+#### 📋 実装内容
+
+**1. Sustainペダル基本機能**
+- `Qt.Key_Tab`でSustain ON/OFF切り替え
+- UI表示: "Sustain: OFF" / "Sustain: ON"（緑色、太字）
+- MIDI Control Change 64メッセージ送信（127=ON, 0=OFF）
+
+**2. 音響持続効果**
+```python
+# 持続音管理
+self.sustained_notes: Set[int] = set()
+
+# キーリリース時の処理
+if self.sustain_active:
+    self.sustained_notes.add(midi_pitch)  # 持続音として保持
+else:
+    self.note_released.emit(midi_pitch)   # 通常リリース
+```
+
+**3. MacのJISキーボード対応**
+- `eventFilter`によるTabキー確実キャッチ
+- フォーカス管理強化（`setFocus` + `activateWindow`）
+- キー圧縮無効化（`Qt.WA_KeyCompression`）
+- フォーカスヒント追加: "※ Click here first to ensure keyboard focus"
+
+**4. 視覚的統合**
+- 鍵盤表示: 持続音も青色ハイライト表示
+- コード分析: `pressed_notes | sustained_notes`による統合解析
+- デバッグ出力: 持続/解放の詳細ログ
+
+#### 🔧 技術的実装
+
+**AudioRoutingCoordinator拡張:**
+```python
+def send_control_change(self, track_index: int, controller: int, value: int) -> bool:
+    """Send MIDI Control Change message for specific track"""
+    # FluidSynth, 外部MIDI, Soundfont対応
+    # 複数音源での確実なCC送信
+```
+
+**Sustain動作フロー:**
+1. **Tab押下** → `sustain_toggle` → UI更新 + CC64送信
+2. **キー演奏** → 通常のnote_on処理
+3. **キーリリース** → `sustained_notes`に追加（音継続）
+4. **Tab再押下** → 持続音すべて解放 + CC64(0)送信
+
+#### 📊 修正結果
+- **Logic Pro互換**: TabキーSustain動作
+- **音響効果**: 真のペダル持続機能
+- **JISキーボード**: Mac環境での確実動作
+- **安全性**: アプリ終了時の自動リリース
+- **UI/UX**: 直感的な操作と視覚フィードバック
+
+**修正ファイル:**
+- `src/ui/virtual_keyboard_widget.py`: Sustain機能メイン実装
+- `src/audio_routing_coordinator.py`: `send_control_change`メソッド追加
+
+#### 💡 技術的ポイント
+- **状態分離**: `pressed_notes`（物理）と`sustained_notes`（仮想）
+- **統合表示**: 両方を合わせた視覚・音響フィードバック
+- **イベント処理**: Tab キーの特殊扱いに対するeventFilter対応
+- **MIDI準拠**: 標準CC64による音源互換性
+
+### 2025-07-23: 仮想キーボード表示鍵盤数の修正 & JISキーボード対応
+**UI/UX改善**: 表示鍵盤数と実際のキーマッピング範囲の一致、JISキーボード最適化
+
+#### 🎯 修正目標
+- 仮想キーボードの表示鍵盤数と実際にタイピングで演奏可能な音の数を一致させる
+- JISキーボードでの操作性を向上（':'キーの採用）
+- ユーザーの混乱を解消し、より直感的なUI/UX体験を提供
+
+#### 📋 問題分析
+**修正前の問題:**
+- 仮想キーボード表示: 2オクターブ（14個の白鍵）
+- 実際のキーマッピング: 11個の白鍵のみ対応
+- ユーザーが鍵盤をクリックしても音が出ない範囲が存在
+
+**キーマッピング詳細:**
+- 白鍵: A(C) S(D) D(E) F(F) G(G) H(A) J(B) K(C+12) L(D+12) ;(E+12) :(F+12)
+- 黒鍵: W(C#) E(D#) T(F#) Y(G#) U(A#) O(C#+12) P(D#+12)
+
+#### 🔧 実装内容
+
+**1. 表示鍵盤数の調整**
+- `VirtualKeyboardWidget.visible_octaves = 2` → `visible_keys = 11`
+- `PianoKeyboardDisplay.visible_octaves = 2` → `visible_keys = 11`
+
+**2. 鍵盤描画ロジックの更新**
+```python
+# 白鍵レイアウト: C D E F G A B C D E F（11鍵）
+white_key_offsets = [0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17]
+
+# 黒鍵レイアウト: C# D# F# G# A# C# D#（7鍵）
+black_key_positions = [0.7, 1.7, 3.7, 4.7, 5.7, 7.7, 8.7]
+black_note_offsets = [1, 3, 6, 8, 10, 13, 15]
+```
+
+**3. JISキーボード対応**
+- F+12キーを`Qt.Key_Apostrophe("'")`から`Qt.Key_Colon(":")`に変更
+- JISキーボードで打ちやすい位置（;キーの右隣）への最適化
+
+**4. UI表示の改善**
+- キーマッピング説明を「A S D F G H J K L ; :」に更新
+- 「JIS keyboard optimized」の注記を追加
+- 正確な鍵盤配置（C-B-C-D-E-F）の説明
+
+#### 📊 修正結果
+- **表示鍵盤**: 11個の白鍵 + 対応する7個の黒鍵
+- **演奏可能範囲**: タイピングキーボードと完全一致
+- **UI/UX**: 混乱のない直感的な操作体験
+
+**修正ファイル:**
+- `src/ui/virtual_keyboard_widget.py`: メイン修正
+  - `VirtualKeyboardWidget.__init__()`: visible_keys設定
+  - `PianoKeyboardDisplay._draw_white_keys()`: 11鍵描画
+  - `PianoKeyboardDisplay._draw_black_keys()`: 対応黒鍵描画
+  - UI説明テキストの更新
+
+#### 💡 技術的解決策
+- **正確な鍵盤マッピング**: 実際のキー配置に基づく描画計算
+- **動的レイアウト**: 鍵盤数に応じた自動サイズ調整
+- **視覚的一貫性**: 白鍵・黒鍵の正しい位置関係を維持
+
+### 2025-07-23: Strudelプロトタイプコード整理
+**プロジェクト整理**: 不要なプロトタイプファイルの削除とGit管理の整備
+
+#### 🎯 整理目標
+- Strudelローカル実行環境確立により、PyDomino内実装が不要となったため整理
+- プロダクションコードのクリーンアップとディレクトリ構成の最適化
+
+#### 📋 削除対象
+**プロトタイプ・テストファイル:**
+- WebSocket統合関連: `websocket_midi_server.py`, `realtime_midi_bridge.py`
+- JavaScript統合: `strudel_websocket_client.js`, `strudel_midi_bridge.js`
+- Node.js関連: `package.json`, `package-lock.json`, `node_modules/`
+- ターミナル機能: `*terminal*.py`ウィジェット群
+- テストファイル: `test_strudel_*.py`, `test_*terminal*.py`
+- 開発時テスト: `test_app_audio.py`, `test_audio_issue.py` など
+
+**保持されたファイル:**
+- Strudelドキュメント（将来の参考資料として）
+- 本体機能コード（完全に保持）
+
+#### 🔧 実装内容
+**1. .gitignore更新**
+```bash
+# Strudel integration docs (private - not for public release)
+docs/STRUDEL_LOCAL_SETUP.md
+docs/STRUDEL_WEBSOCKET_API.md  
+docs/STRUDEL_WEBSOCKET_INTEGRATION_PLAN.md
+docs/STRUDEL_WEBSOCKET_SETUP.md
+docs/TERMINAL_FEATURE_PLAN.md
+```
+
+**2. 依存関係の無効化**
+- `midi_input_system.py`: WebSocket機能を無効化に変更
+- 残存する参照の安全な処理
+
+**3. アプリケーション動作確認**
+- 全機能正常動作確認済み
+- MIDIルーティング、オーディオシステム、UI操作すべて正常
+
+#### 📊 整理結果
+- **ディレクトリ**: クリーンで整理された構成
+- **Git管理**: 公開すべきでないドキュメントの適切な除外
+- **機能**: 本体機能への影響一切なし
+- **保守性**: 不要コードの除去により向上
+
+### 2025-07-17: JavaScriptターミナル機能プロトタイプ実装
+**プロトタイプ開発**: ライブコーディング統合に向けた実験的実装
+
+#### 🎯 実装目標
+- PyDominoにターミナル機能を追加してStrudelライブコーディングとの連携を実現
+- フレキシブルなレイアウト対応（ドッキング、タブ表示）
+- Node.js統合によるJavaScript実行環境の構築
+- 将来的な汎用ターミナル化への拡張基盤準備
+
+#### 📋 実装内容
+
+**1. JavaScript専用ターミナル作成**
+- `JavaScriptTerminalWidget`: Node.js実行環境を統合したターミナル
+- シンタックスハイライト機能（JavaScriptキーワード、文字列、コメント）
+- リアルタイムコード実行とエラーハンドリング
+- 一時ファイル管理とプロセス制御
+
+**2. フレキシブルレイアウト実装**
+- `TerminalDockWidget`: 右側・下側・フローティングドッキング対応
+- `TerminalTabWidget`: タブベースのレイアウト
+- 設定保存・復元機能（QSettings）
+- 動的なレイアウト切り替え
+
+**3. プロトタイプテスト環境**
+- `test_terminal_prototype.py`: スタンドアローンテストアプリケーション
+- 全レイアウトモードの動作確認
+- サンプルJavaScriptコードの自動実行テスト
+
+#### 🔧 技術的詳細
+
+**新規作成ファイル:**
+- `src/ui/javascript_terminal_widget.py`: メインターミナルウィジェット
+- `src/ui/terminal_dock_widget.py`: ドッキング＆タブ機能
+- `test_terminal_prototype.py`: プロトタイプテストアプリ
+- `docs/TERMINAL_FEATURE_PLAN.md`: 実装計画ドキュメント
+
+**主要クラス:**
+- `JavaScriptTerminalWidget`: 核となるターミナル機能
+- `JavaScriptHighlighter`: シンタックスハイライト
+- `TerminalDockWidget`: ドッキング管理
+- `TerminalTabWidget`: タブレイアウト管理
+
+**技術スタック:**
+- PySide6 (QProcess, QPlainTextEdit, QDockWidget, QTabWidget)
+- Node.js v18.17.0 (JavaScript実行環境)
+- QSyntaxHighlighter (シンタックスハイライト)
+- QSettings (設定永続化)
+
+#### ✅ 成果
+- 完全に動作するJavaScriptターミナルプロトタイプ
+- 3つのレイアウトモード（右ドッキング、下ドッキング、タブ表示）
+- Node.js統合による安定したJavaScript実行環境
+- 拡張可能なアーキテクチャ設計
+- 包括的なテスト環境とドキュメント
+
+#### 🧪 テスト結果
+- Node.js実行環境: ✅ 正常動作 (v18.17.0)
+- JavaScript実行: ✅ 正常動作（console.log、配列操作、数学演算）
+- シンタックスハイライト: ✅ 正常動作
+- レイアウト切り替え: ✅ 正常動作
+- エラーハンドリング: ✅ 正常動作
+
+#### 🚀 将来の拡張計画
+1. **PyDominoメインUI統合**: 実際のアプリケーションへの組み込み
+2. **Strudel統合**: npm + Strudelライブラリの統合
+3. **MIDI連携**: PyDominoとの双方向MIDI通信
+4. **汎用ターミナル化**: 他言語サポート拡張
+
+#### 📚 アーキテクチャ設計パターン
+- **プロトタイプ開発**: 段階的な実装とテスト
+- **モジュラー設計**: 機能別クラス分離
+- **設定永続化**: ユーザー設定の保存・復元
+- **クロスプラットフォーム**: PySide6標準機能の活用
+
+---
+
 ### 2025-07-17: 拍子変更時の小節番号バー同期機能実装
 **コミット**: `29453f9` - "Fix time signature change synchronization in measure bar"
 
