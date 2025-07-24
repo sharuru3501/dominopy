@@ -484,16 +484,16 @@ class PyDominoMainWindow(QMainWindow):
     def _initialize_audio_system(self):
         """Initialize the audio system"""
         import os
+        import sys
         
-        # Create audio settings
-        soundfont_path = os.path.join(os.path.dirname(__file__), '..', '..', 'soundfonts', 'MuseScore_General.sf2')
-        soundfont_path = os.path.abspath(soundfont_path)
+        # Create audio settings - let audio_system.py handle soundfont selection
+        soundfont_path = None  # Use fallback logic in audio_system.py
         
         audio_settings = AudioSettings(
             sample_rate=44100,
             buffer_size=1024,
             gain=0.5,
-            soundfont_path=soundfont_path if os.path.exists(soundfont_path) else None,
+            soundfont_path=soundfont_path if soundfont_path and os.path.exists(soundfont_path) else None,
             midi_device_id=None   # Will use default MIDI device
         )
         

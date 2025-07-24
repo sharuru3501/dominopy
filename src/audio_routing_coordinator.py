@@ -212,8 +212,8 @@ class AudioRoutingCoordinator:
     
     def _allocate_channel(self, track_index: int, audio_source: AudioSource) -> Optional[int]:
         """Allocate a MIDI channel for a track"""
-        # For internal FluidSynth, use track index as preferred channel
-        if audio_source.source_type == AudioSourceType.INTERNAL_FLUIDSYNTH:
+        # For soundfont sources, use track index as preferred channel
+        if audio_source.source_type == AudioSourceType.SOUNDFONT:
             preferred_channel = track_index % 16
             
             # Check if preferred channel is available
@@ -251,7 +251,7 @@ class AudioRoutingCoordinator:
     
     def _setup_audio_backend(self, route: AudioRoute) -> bool:
         """Set up the audio backend for a route"""
-        if route.audio_source.source_type == AudioSourceType.INTERNAL_FLUIDSYNTH:
+        if route.audio_source.source_type == AudioSourceType.SOUNDFONT:
             # Set program for channel on internal FluidSynth
             if self.audio_manager and hasattr(self.audio_manager, 'fluidsynth_audio'):
                 fluidsynth = self.audio_manager.fluidsynth_audio
@@ -277,7 +277,7 @@ class AudioRoutingCoordinator:
     
     def _route_note_on(self, route: AudioRoute, note: MidiNote) -> bool:
         """Route a note-on event through the appropriate audio backend"""
-        if route.audio_source.source_type == AudioSourceType.INTERNAL_FLUIDSYNTH:
+        if route.audio_source.source_type == AudioSourceType.SOUNDFONT:
             # Ensure correct program is set before playing note
             channel_state = self.channel_states.get(route.channel)
             if channel_state and channel_state.current_program != route.program:
@@ -337,7 +337,7 @@ class AudioRoutingCoordinator:
     
     def _route_note_off(self, route: AudioRoute, note: MidiNote) -> bool:
         """Route a note-off event through the appropriate audio backend"""
-        if route.audio_source.source_type == AudioSourceType.INTERNAL_FLUIDSYNTH:
+        if route.audio_source.source_type == AudioSourceType.SOUNDFONT:
             # Route through MIDI routing manager if available
             if self.midi_routing_manager:
                 self.midi_routing_manager.stop_note(route.channel, note.pitch)
@@ -365,6 +365,59 @@ class AudioRoutingCoordinator:
                 else:
                     # Generic per-track routing
                     return self.per_track_router.stop_note(route.track_index, note)
+        
+        return False
+    
+    def send_control_change(self, track_index: int, controller: int, value: int) -> bool:
+        """Send a MIDI Control Change message for a specific track"""
+        route = self.track_routes.get(track_index)
+        if not route:
+            # If no route exists for the track, try to setup one
+            self.setup_track_route(track_index)
+            route = self.track_routes.get(track_index)
+            if not route:
+                return False
+        
+        # Route the control change through appropriate backend
+        if route.audio_source.source_type == AudioSourceType.SOUNDFONT:
+            # Route through MIDI routing manager if available
+            if self.midi_routing_manager:
+                try:
+                    # Use MIDI routing manager's control change method
+                    if hasattr(self.midi_routing_manager, 'send_control_change'):
+                        self.midi_routing_manager.send_control_change(route.channel, controller, value)
+                        return True
+                    # Fallback to manual MIDI message construction
+                    elif hasattr(self.midi_routing_manager, 'send_midi_message'):
+                        midi_bytes = [0xB0 + route.channel, controller, value]  # Control Change
+                        self.midi_routing_manager.send_midi_message(midi_bytes)
+                        return True
+                except Exception as e:
+                    print(f"Error sending control change via MIDI routing: {e}")
+            
+            # Fallback to direct audio manager
+            elif self.audio_manager and hasattr(self.audio_manager, 'send_control_change'):
+                try:
+                    self.audio_manager.send_control_change(route.channel, controller, value)
+                    return True
+                except Exception as e:
+                    print(f"Error sending control change via audio manager: {e}")
+        
+        elif route.audio_source.source_type == AudioSourceType.EXTERNAL_MIDI:
+            # Route through per-track router for external MIDI
+            if self.per_track_router and hasattr(self.per_track_router, 'send_control_change'):
+                try:  
+                    return self.per_track_router.send_control_change(route.track_index, controller, value)
+                except Exception as e:
+                    print(f"Error sending control change via per-track router: {e}")
+        
+        elif route.audio_source.source_type == AudioSourceType.SOUNDFONT:
+            # Route through per-track router for soundfonts
+            if self.per_track_router and hasattr(self.per_track_router, 'send_control_change'):
+                try:
+                    return self.per_track_router.send_control_change(route.track_index, controller, value)
+                except Exception as e:
+                    print(f"Error sending control change via per-track router: {e}")
         
         return False
     

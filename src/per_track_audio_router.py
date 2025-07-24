@@ -92,8 +92,6 @@ class PerTrackAudioRouter(QObject):
             success = self._initialize_soundfont_audio(track_index, source)
         elif source.source_type == AudioSourceType.EXTERNAL_MIDI:
             success = self._initialize_external_midi(track_index, source)
-        elif source.source_type == AudioSourceType.INTERNAL_FLUIDSYNTH:
-            success = self._initialize_internal_fluidsynth(track_index, source)
         elif source.name.startswith("internal_fluidsynth_ch"):
             # Handle channel-specific internal FluidSynth assignments
             success = self._initialize_internal_fluidsynth(track_index, source)
@@ -118,8 +116,15 @@ class PerTrackAudioRouter(QObject):
             return False
         
         try:
-            # Create new FluidSynth instance
-            fs = fluidsynth.Synth()
+            # Import AudioSettings to use same settings as shared instance
+            from src.audio_system import AudioSettings
+            
+            # Create new FluidSynth instance with same settings as shared instance
+            default_settings = AudioSettings()
+            fs = fluidsynth.Synth(
+                samplerate=default_settings.sample_rate,  # 44100Hz
+                gain=0.0  # Start with zero gain to prevent startup pops
+            )
             fs.start(driver="coreaudio")  # Use CoreAudio on macOS
             
             # Load soundfont
@@ -133,6 +138,21 @@ class PerTrackAudioRouter(QObject):
             program_number = max(0, min(127, source.program - 1))  # Ensure valid range 0-127
             fs.program_select(source.channel, soundfont_id, 0, program_number)
             print(f"FluidSynth: Selected program {program_number} for {source.name}")
+            
+            # Set gain to match shared instance (gradually to prevent pops)
+            target_gain = default_settings.gain
+            steps = 10
+            for i in range(steps + 1):
+                current_gain = (target_gain * i) / steps
+                try:
+                    fs.setting('synth.gain', current_gain)
+                    # Small delay to prevent pops
+                    import time
+                    time.sleep(0.01)  # 10ms delay between steps
+                except Exception as e:
+                    print(f"Warning: Could not set FluidSynth gain: {e}")
+                    break
+            print(f"FluidSynth: Gain set to {target_gain} for {source.name}")
             
             # Create track instance
             instance = TrackAudioInstance(
@@ -297,9 +317,6 @@ class PerTrackAudioRouter(QObject):
             elif instance.source.source_type == AudioSourceType.EXTERNAL_MIDI:
                 print(f"PerTrackRouter: Using external MIDI for track {track_index}")
                 return self._play_external_midi_note(instance, note)
-            elif instance.source.source_type == AudioSourceType.INTERNAL_FLUIDSYNTH:
-                print(f"PerTrackRouter: Using internal FluidSynth for track {track_index}")
-                return self._play_internal_note(instance, note)
             
         except Exception as e:
             print(f"Error playing note on track {track_index}: {e}")
@@ -318,8 +335,6 @@ class PerTrackAudioRouter(QObject):
                 return self._stop_soundfont_note(instance, note)
             elif instance.source.source_type == AudioSourceType.EXTERNAL_MIDI:
                 return self._stop_external_midi_note(instance, note)
-            elif instance.source.source_type == AudioSourceType.INTERNAL_FLUIDSYNTH:
-                return self._stop_internal_note(instance, note)
             
         except Exception as e:
             print(f"Error stopping note on track {track_index}: {e}")

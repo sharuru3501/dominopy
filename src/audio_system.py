@@ -57,7 +57,6 @@ class FluidSynthAudio(QObject):
         self.default_soundfont_paths = [
             "/usr/share/sounds/sf2/FluidR3_GM.sf2",  # Linux
             "/usr/share/soundfonts/FluidR3_GM.sf2",  # Linux alternative
-            "/usr/share/soundfonts/default.sf2",     # Linux alternative
             "/System/Library/Components/CoreAudio.component/Contents/Resources/gs_instruments.dls",  # macOS
             "C:\\Windows\\system32\\drivers\\gm.dls",  # Windows
         ]
@@ -127,12 +126,25 @@ class FluidSynthAudio(QObject):
         if self.settings.soundfont_path and os.path.exists(self.settings.soundfont_path):
             return self.settings.soundfont_path
         
-        # First, try to find any .sf2 file in local locations (preferred)
+        # Use the new SoundFont manager
+        try:
+            from src.soundfont_manager import get_soundfont_manager
+            soundfont_manager = get_soundfont_manager()
+            
+            # Try to get the default soundfont
+            default_path = soundfont_manager.get_default_soundfont()
+            if default_path:
+                return default_path
+        except ImportError:
+            print_debug("SoundFont manager not available, using fallback")
+        
+        # Fallback to original logic
         search_paths = [
             "soundfonts/",
             "./soundfonts/",
             "/usr/share/sounds/sf2/",
             "/usr/share/soundfonts/",
+            os.path.expanduser("~/Library/Application Support/PyDomino/soundfonts/"),
             os.path.expanduser("~/soundfonts/"),
             ".",
         ]

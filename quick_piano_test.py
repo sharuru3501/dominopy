@@ -18,7 +18,7 @@ def test_piano_audio():
     print("Initializing audio systems...")
     
     # Initialize audio
-    soundfont_path = os.path.join('soundfonts', 'MuseScore_General.sf2')
+    soundfont_path = os.path.join('soundfonts', 'FluidR3_GM.sf2')
     audio_settings = AudioSettings(
         sample_rate=44100,
         buffer_size=1024,

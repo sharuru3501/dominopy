@@ -7,7 +7,7 @@ a = Analysis(
     binaries=[
         ('/usr/local/Cellar/fluid-synth/2.4.6/lib/libfluidsynth.3.3.6.dylib', '.'),
     ],
-    datas=[('soundfonts/default.sf2', 'soundfonts'), ('src', 'src')],
+    datas=[('src', 'src'), ('soundfonts', 'soundfonts')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

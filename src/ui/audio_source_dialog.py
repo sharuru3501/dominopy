@@ -85,19 +85,14 @@ class AudioSourceDialog(QDialog):
         self.source_type_group.addButton(self.no_audio_radio, 0)
         category_widget.addWidget(self.no_audio_radio)
         
-        self.internal_radio = QRadioButton("🎵 Internal FluidSynth")
-        self.internal_radio.toggled.connect(self.on_source_type_changed)
-        self.source_type_group.addButton(self.internal_radio, 1)
-        category_widget.addWidget(self.internal_radio)
-        
         self.soundfont_radio = QRadioButton("🎼 Soundfont Files")
         self.soundfont_radio.toggled.connect(self.on_source_type_changed)
-        self.source_type_group.addButton(self.soundfont_radio, 2)
+        self.source_type_group.addButton(self.soundfont_radio, 1)
         category_widget.addWidget(self.soundfont_radio)
         
         self.midi_radio = QRadioButton("🔌 External MIDI")
         self.midi_radio.toggled.connect(self.on_source_type_changed)
-        self.source_type_group.addButton(self.midi_radio, 3)
+        self.source_type_group.addButton(self.midi_radio, 2)
         category_widget.addWidget(self.midi_radio)
         
         # Source list
@@ -177,21 +172,6 @@ class AudioSourceDialog(QDialog):
             no_audio_source = self.audio_source_manager.available_sources.get("no_audio_source")
             if no_audio_source:
                 sources = [no_audio_source]
-        elif self.internal_radio.isChecked():
-            # Internal FluidSynth - include both generic and track-specific sources
-            sources = []
-            
-            # Add generic internal FluidSynth source
-            internal_source = self.audio_source_manager.available_sources.get("internal_fluidsynth")
-            if internal_source:
-                sources.append(internal_source)
-            
-            # Add track-specific internal FluidSynth sources
-            for source_id, source in self.audio_source_manager.available_sources.items():
-                if (source.source_type == AudioSourceType.INTERNAL_FLUIDSYNTH and 
-                    source_id.startswith("internal_fluidsynth_ch") and
-                    source not in sources):
-                    sources.append(source)
         elif self.soundfont_radio.isChecked():
             # Soundfont sources
             sources = self.audio_source_manager.get_soundfont_sources()
@@ -242,8 +222,7 @@ class AudioSourceDialog(QDialog):
         type_text = {
             AudioSourceType.NONE: "No Audio Source (Silent)",
             AudioSourceType.SOUNDFONT: "Soundfont File (.sf2)",
-            AudioSourceType.EXTERNAL_MIDI: "External MIDI Device",
-            AudioSourceType.INTERNAL_FLUIDSYNTH: "Internal FluidSynth"
+            AudioSourceType.EXTERNAL_MIDI: "External MIDI Device"
         }.get(source.source_type, "Unknown")
         
         self.details_type.setText(type_text)
@@ -273,8 +252,8 @@ class AudioSourceDialog(QDialog):
             if soundfont_info:
                 info_text += f"Available Programs: {len(soundfont_info.programs)}\n"
         
-        # Show GM instrument information for Internal FluidSynth
-        if source.source_type == AudioSourceType.INTERNAL_FLUIDSYNTH:
+        # Show GM instrument information for Soundfont sources
+        if source.source_type == AudioSourceType.SOUNDFONT:
             gm_instrument_name = get_gm_instrument_name(source.program)
             info_text += f"GM Instrument: {gm_instrument_name}\n"
             self.gm_instrument_button.show()
@@ -299,8 +278,6 @@ class AudioSourceDialog(QDialog):
             self.soundfont_radio.setChecked(True)
         elif source.source_type == AudioSourceType.EXTERNAL_MIDI:
             self.midi_radio.setChecked(True)
-        else:
-            self.internal_radio.setChecked(True)
         
         # Select item in list
         for i in range(self.source_list.count()):
@@ -336,7 +313,7 @@ class AudioSourceDialog(QDialog):
         
         source_id = current_item.data(Qt.UserRole)
         source = self.audio_source_manager.available_sources.get(source_id)
-        if not source or source.source_type != AudioSourceType.INTERNAL_FLUIDSYNTH:
+        if not source or source.source_type != AudioSourceType.SOUNDFONT:
             return
         
         from src.ui.gm_instrument_dialog import GMInstrumentDialog
@@ -353,7 +330,7 @@ class AudioSourceDialog(QDialog):
         
         source_id = current_item.data(Qt.UserRole)
         source = self.audio_source_manager.available_sources.get(source_id)
-        if not source or source.source_type != AudioSourceType.INTERNAL_FLUIDSYNTH:
+        if not source or source.source_type != AudioSourceType.SOUNDFONT:
             return
         
         # Update the track's program setting in TrackManager
@@ -380,7 +357,7 @@ class AudioSourceDialog(QDialog):
         track_source = AudioSource(
             id=track_specific_id,
             name=f"GM: {get_gm_instrument_name(program)}",
-            source_type=AudioSourceType.INTERNAL_FLUIDSYNTH,
+            source_type=AudioSourceType.SOUNDFONT,
             program=program,
             channel=self.track_index % 16
         )

@@ -69,6 +69,13 @@ docs/DEVELOPMENT_PLAN.md
 docs/PASTE_TROUBLESHOOTING.md
 CRASH_FIXES.md
 
+# Strudel integration docs (private - not for public release)
+docs/STRUDEL_LOCAL_SETUP.md
+docs/STRUDEL_WEBSOCKET_API.md
+docs/STRUDEL_WEBSOCKET_INTEGRATION_PLAN.md
+docs/STRUDEL_WEBSOCKET_SETUP.md
+docs/TERMINAL_FEATURE_PLAN.md
+
 # Soundfonts - large files excluded from repository
 # Users should download/install their preferred soundfonts separately
 *.sf2

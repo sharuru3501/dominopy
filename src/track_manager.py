@@ -400,13 +400,14 @@ class TrackManager(QObject):
                         # For "No Audio Source" - track is silent
                         audio_source_name = "🚫 No Audio Source"
                         gm_instrument_name = "Silent"
-                    elif audio_source.source_type == AudioSourceType.INTERNAL_FLUIDSYNTH:
+                    elif audio_source.source_type == AudioSourceType.SOUNDFONT:
                         if audio_source.program is not None:
                             gm_instrument_name = get_gm_instrument_name(audio_source.program)
-                            audio_source_name = f"GM: {gm_instrument_name}"
-                        else:
-                            gm_instrument_name = "No Instrument"
-                            audio_source_name = "Internal FluidSynth (No Instrument)"
+                            audio_source_name = f"SF2: {audio_source.name}"
+                    elif audio_source.source_type == AudioSourceType.EXTERNAL_MIDI:
+                        if audio_source.program is not None:
+                            gm_instrument_name = get_gm_instrument_name(audio_source.program)
+                            audio_source_name = f"MIDI: {audio_source.name}"
         
         return {
             'index': track_index,

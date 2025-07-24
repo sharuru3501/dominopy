@@ -15,7 +15,6 @@ class AudioSourceType(Enum):
     NONE = "none"  # No audio source - silent tracks
     SOUNDFONT = "soundfont"
     EXTERNAL_MIDI = "external_midi"
-    INTERNAL_FLUIDSYNTH = "internal_fluidsynth"
 
 @dataclass
 class AudioSource:
@@ -190,15 +189,7 @@ class AudioSourceManager(QObject):
             channel=0
         )
         
-        # Internal FluidSynth source
-        internal_source = AudioSource(
-            id="internal_fluidsynth",
-            name="Internal FluidSynth",
-            source_type=AudioSourceType.INTERNAL_FLUIDSYNTH
-        )
-        
         self.available_sources["no_audio_source"] = no_audio_source
-        self.available_sources["internal_fluidsynth"] = internal_source
     
     def get_available_sources(self) -> List[AudioSource]:
         """Get list of all available audio sources"""
@@ -233,10 +224,6 @@ class AudioSourceManager(QObject):
                 print(f"Applied track {track_index} program {source.program} to soundfont {source.name}")
             except ImportError:
                 pass
-        elif source.source_type == AudioSourceType.INTERNAL_FLUIDSYNTH:
-            # For Internal FluidSynth, make sure the program number is preserved
-            # The program may have been changed in the AudioSourceDialog
-            print(f"Internal FluidSynth assigned to track {track_index} with program {source.program}")
         
         print(f"📌 Assigned {source_id} to track {track_index} (program: {source.program})")
         return True

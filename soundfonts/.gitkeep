@@ -1,0 +1,12 @@
+# SoundFonts Directory
+
+このフォルダにサウンドフォント(.sf2)ファイルを配置してください。
+Place your SoundFont (.sf2) files in this directory.
+
+推奨サウンドフォント:
+- FluidR3_GM.sf2 (MIT License, ~141MB)
+- TimGM6mb.sf2 (GPL License, ~6MB)
+
+ダウンロード先:
+- https://musescore.org/
+- http://freepats.zenvoid.org/
