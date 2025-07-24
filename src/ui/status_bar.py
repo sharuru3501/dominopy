@@ -140,8 +140,8 @@ class PlaybackInfoWidget(QWidget):
         self.position_label.setText(f"{minutes}:{seconds:02d} | {tempo_bpm:.0f} BPM")
 
 
-class PyDominoStatusBar(QStatusBar):
-    """Simplified status bar for PyDomino - only shows project info"""
+class DominoPyStatusBar(QStatusBar):
+    """Simplified status bar for DominoPy - only shows project info"""
     
     def __init__(self):
         super().__init__()

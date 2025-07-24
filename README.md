@@ -1,8 +1,8 @@
-# 🎹 PyDomino MIDI Sequencer
+# 🎹 DominoPy MIDI Sequencer
 
 **Modern MIDI sequencer inspired by Domino, built with Python & PySide6**
 
-PyDomino は Python と PySide6 で構築されたモダンな MIDI シーケンサーです。クラシックなMIDIシーケンサー「Domino」にインスパイアされ、現代的な技術で再構築されました。
+DominoPy は Python と PySide6 で構築されたモダンな MIDI シーケンサーです。MIDIシーケンサー「Domino」にインスパイアされ、現代的な技術で再構築されました。
 
 ## 特徴
 
@@ -35,7 +35,7 @@ python run_app.py
 ## ディレクトリ構造
 
 ```
-pydominodev/
+dominopy/
 ├── src/                    # メインソースコード
 │   ├── audio_system.py     # オーディオシステム
 │   ├── playback_engine.py  # 再生エンジン
@@ -56,7 +56,7 @@ pydominodev/
 
 ## 🤝 コントリビューション
 
-PyDominoへの貢献を歓迎します！
+DominoPyへの貢献を歓迎します！
 
 1. **フォーク** このリポジトリをフォーク
 2. **ブランチ作成** (`git checkout -b feature/amazing-feature`)
@@ -80,4 +80,4 @@ PyDominoへの貢献を歓迎します！
 
 ---
 
-**PyDomino** - Made with ❤️ for music creators
+**DominoPy** - Made with ❤️ for music creators

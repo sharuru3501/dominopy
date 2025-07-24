@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (QMainWindow, QFileDialog, QWidget, QHBoxLayout, Q
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtCore import Qt, QTimer
 from src.ui.piano_roll_widget import PianoRollWidget
-from src.ui.status_bar import PyDominoStatusBar
+from src.ui.status_bar import DominoPyStatusBar
 from src.logger import get_logger
 from src.ui.compact_tempo_widget import (CompactTempoWidget, CompactTimeSignatureWidget, 
                                        CompactMusicInfoWidget, CompactPlaybackInfoWidget, 
@@ -23,11 +23,11 @@ from src.ui.measure_bar_widget import MeasureBarWidget
 from src.ui.grid_subdivision_widget import GridSubdivisionWidget
 from src.logger import get_logger, print_debug
 
-class PyDominoMainWindow(QMainWindow):
+class DominoPyMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.logger = get_logger(__name__)
-        self.setWindowTitle("PyDomino")
+        self.setWindowTitle("DominoPy")
         self.setGeometry(100, 100, 800, 600) # x, y, width, height
 
         # Create central widget and layout
@@ -96,7 +96,7 @@ class PyDominoMainWindow(QMainWindow):
         QTimer.singleShot(100, self._center_on_c4)
 
         # Create status bar (simplified)
-        self.status_bar = PyDominoStatusBar()
+        self.status_bar = DominoPyStatusBar()
         self.setStatusBar(self.status_bar)
 
         self._create_menu_bar()
@@ -273,7 +273,7 @@ class PyDominoMainWindow(QMainWindow):
                     self.h_scrollbar.setMaximum(self.piano_roll.visible_end_tick)
                     self.h_scrollbar.setValue(0) # Reset horizontal scroll to beginning
                     
-                    self.setWindowTitle(f"PyDomino - {file_path}")
+                    self.setWindowTitle(f"DominoPy - {file_path}")
                     self.status_bar.update_project_name(file_path.split('/')[-1])
                 except Exception as e:
                     self.logger.info(f"Error loading MIDI file: {e}")
@@ -298,7 +298,7 @@ class PyDominoMainWindow(QMainWindow):
                 try:
                     success = save_midi_file(self.piano_roll.midi_project, file_path)
                     if success:
-                        self.setWindowTitle(f"PyDomino - {file_path}")
+                        self.setWindowTitle(f"DominoPy - {file_path}")
                         self.status_bar.update_project_name(file_path.split('/')[-1])
                         self.status_bar.showMessage(f"Project saved as {file_path}", 3000)
                     else:
