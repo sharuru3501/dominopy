@@ -1,6 +1,6 @@
 # 🎹 MIDI設定ガイド - DAWとの連携方法
 
-PyDominoとDAW（Logic Pro、Ableton Live、Cubase、FL Studio、Studio One等）を連携させる方法を説明します。
+DominoPyとDAW（Logic Pro、Ableton Live、Cubase、FL Studio、Studio One等）を連携させる方法を説明します。
 
 ## 📋 目次
 - [MIDIルーティングの仕組み](#midiルーティングの仕組み)
@@ -16,14 +16,14 @@ PyDominoとDAW（Logic Pro、Ableton Live、Cubase、FL Studio、Studio One等�
 ### 基本的なデータフロー
 ```
 ┌─────────────┐    MIDI    ┌─────────────┐    Audio    ┌─────────────┐
-│  PyDomino   │ ────────▶ │     DAW     │ ────────▶ │  スピーカー   │
+│  DominoPy   │ ────────▶ │     DAW     │ ────────▶ │  スピーカー   │
 │  (作曲)     │           │  (音源)     │           │            │
 └─────────────┘           └─────────────┘           └─────────────┘
 ```
 
 ### 詳細なMIDIルーティング
 ```
-PyDomino                    仮想MIDIドライバー          DAW
+DominoPy                    仮想MIDIドライバー          DAW
 ┌─────────────────┐        ┌──────────────┐        ┌──────────────────┐
 │  🎹 Piano Roll  │        │              │        │  🎵 Track 1      │
 │  🎛️ Virtual KB  │ ──────▶│ IAC Driver   │──────▶ │  🎺 Track 2      │
@@ -32,7 +32,7 @@ PyDomino                    仮想MIDIドライバー          DAW
                                   │
                            ┌──────────────┐
                            │ MIDI Router  │
-                           │ (PyDomino)   │
+                           │ (DominoPy)   │
                            └──────────────┘
                                   │
                            ┌──────────────┐
@@ -44,13 +44,13 @@ PyDomino                    仮想MIDIドライバー          DAW
 ### 設定パターン比較
 ```
 パターン1: 内蔵音源のみ
-PyDomino ──▶ FluidSynth ──▶ 🔊
+DominoPy ──▶ FluidSynth ──▶ 🔊
 
 パターン2: DAW音源のみ  
-PyDomino ──▶ 仮想MIDI ──▶ DAW ──▶ 🔊
+DominoPy ──▶ 仮想MIDI ──▶ DAW ──▶ 🔊
 
 パターン3: ハイブリッド (推奨)
-PyDomino ──┬▶ FluidSynth ──┬▶ 🔊
+DominoPy ──┬▶ FluidSynth ──┬▶ 🔊
            └▶ 仮想MIDI ──▶ DAW ──┘
 ```
 
@@ -59,13 +59,13 @@ PyDomino ──┬▶ FluidSynth ──┬▶ 🔊
 ## 🔧 基本的なMIDI設定
 
 ### 1. MIDI出力設定を開く
-1. PyDominoを起動
+1. DominoPyを起動
 2. メニューバー **Audio** → **MIDI Routing...** をクリック
 3. MIDI Output Settings ダイアログが開きます
 
 ### 2. 出力先の選択
 **Primary Output** で以下から選択：
-- **🔊 Internal FluidSynth (Built-in)** - PyDomino内蔵音源
+- **🔊 Internal FluidSynth (Built-in)** - DominoPy内蔵音源
 - **🎹 IAC Driver (Virtual MIDI)** - DAWとの連携用（macOS）
 - **🎹 その他の仮想MIDIドライバー** - Windows/Linux
 
@@ -103,7 +103,7 @@ Audio MIDI Setup
 └─────────────────────────────────────┘
 ```
 
-### Step 2: PyDomino側設定
+### Step 2: DominoPy側設定
 1. **Audio** → **MIDI Routing...** を開く
 2. **Primary Output**: **IAC Driver (Virtual MIDI)** を選択
 3. ✅ **Enable External MIDI Routing** をチェック
@@ -145,7 +145,7 @@ Audio MIDI Setup
 
 **基本的な流れ:**
 1. 仮想MIDIドライバーをインストール・設定
-2. PyDomino: Primary Outputを仮想MIDIポートに設定
+2. DominoPy: Primary Outputを仮想MIDIポートに設定
 3. DAW: MIDI入力を同じ仮想MIDIポートに設定
 
 ### Linux
@@ -156,7 +156,7 @@ Audio MIDI Setup
 
 **基本的な流れ:**
 1. ALSA/Jackで仮想MIDIポートを作成
-2. PyDomino: Primary Outputを仮想ポートに設定
+2. DominoPy: Primary Outputを仮想ポートに設定
 3. DAW: MIDI入力を同じポートに設定
 
 > 📝 **コミュニティ募集中**: Windows/Linux環境での詳細手順をご存知の方は、
@@ -171,7 +171,7 @@ Audio MIDI Setup
 ### トラック別音源設定の例
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                     PyDomino Tracks                            │
+│                     DominoPy Tracks                            │
 ├─────────────┬───────────────────┬───────────────────────────────┤
 │ Track 00    │ Internal FluidSynth │ 🎹 ピアノ (低レイテンシ)        │
 │ Track 01    │ IAC Driver Bus 1    │ 🥁 Logic Pro - ドラム          │
@@ -184,7 +184,7 @@ Audio MIDI Setup
 ├─────────────┬───────────────────┬───────────────────────────────┤
 │ MIDI Track 1│ IAC Driver Bus 1    │ 🥁 Battery/Addictive Drums     │
 │ MIDI Track 2│ IAC Driver Bus 2    │ 🎸 Bass Amp/Trilian           │
-│ Audio Track │ Record from PyDomino│ 🎤 Live Recording             │
+│ Audio Track │ Record from DominoPy│ 🎤 Live Recording             │
 └─────────────┴───────────────────┴───────────────────────────────┘
                         ⬇
                     🔊 Final Audio Output
@@ -205,26 +205,26 @@ Audio MIDI Setup
 ### 問題: DAWで音が鳴らない
 **確認チェックリスト:**
 - ✅ 仮想MIDIドライバーが有効になっているか
-- ✅ PyDomino: Enable External MIDI Routing がON
+- ✅ DominoPy: Enable External MIDI Routing がON
 - ✅ DAW: MIDI入力が正しい仮想ポートに設定されているか
 - ✅ DAW: トラックが録音可能状態になっているか
 
 ### 問題: 音が重複して聞こえる
 **原因:** 内蔵音源とDAW音源が同時に鳴っている
 ```
-PyDomino (FluidSynth) ──┬▶ 🔊 ピアノ音
+DominoPy (FluidSynth) ──┬▶ 🔊 ピアノ音
                        │
 仮想MIDI ──▶ DAW ──────┘▶ 🔊 DAW音源
                          = 🔊🔊 重複!
 ```
 **解決方法:** 
-- PyDomino: **Keep Internal Audio** をOFF にする
+- DominoPy: **Keep Internal Audio** をOFF にする
 - または DAW側の音源をミュート
 
 ### 問題: 音が鳴り続ける
 **原因:** Note Offメッセージが送信されていない
 **解決方法:**
-1. PyDominoを再起動
+1. DominoPyを再起動
 2. DAW側で **All Notes Off** を実行（通常 Cmd+Shift+. など）
 
 ### 問題: 仮想キーボードで外部音源が鳴らない
@@ -247,9 +247,9 @@ PyDomino (FluidSynth) ──┬▶ 🔊 ピアノ音
 
 ### 2. レコーディングワークフロー
 ```
-作曲フェーズ:  PyDomino (高速編集)
+作曲フェーズ:  DominoPy (高速編集)
   ⬇
-アレンジフェーズ: PyDomino → DAW (MIDI録音)
+アレンジフェーズ: DominoPy → DAW (MIDI録音)
   ⬇  
 ミックスフェーズ: DAW (最終調整)
 ```
@@ -271,7 +271,7 @@ PyDomino (FluidSynth) ──┬▶ 🔊 ピアノ音
 
 ## 🎉 まとめ
 
-これでPyDominoとあらゆるDAWの完璧な連携ができました！
+これでDominoPyとあらゆるDAWの完璧な連携ができました！
 
 **対応環境:**
 - ✅ **macOS**: IAC Driver（標準機能）
@@ -293,4 +293,4 @@ PyDomino (FluidSynth) ──┬▶ 🔊 ピアノ音
 - 新しいDAW対応情報
 - トラブルシューティング事例
 
-一緒にPyDominoをより良いソフトウェアにしていきましょう！
+一緒にDominoPyをより良いソフトウェアにしていきましょう！

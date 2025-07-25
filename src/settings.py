@@ -1,5 +1,5 @@
 """
-Application settings management for PyDomino
+Application settings management for DominoPy
 """
 import json
 import os

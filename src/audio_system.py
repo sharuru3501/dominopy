@@ -144,7 +144,7 @@ class FluidSynthAudio(QObject):
             "./soundfonts/",
             "/usr/share/sounds/sf2/",
             "/usr/share/soundfonts/",
-            os.path.expanduser("~/Library/Application Support/PyDomino/soundfonts/"),
+            os.path.expanduser("~/Library/Application Support/DominoPy/soundfonts/"),
             os.path.expanduser("~/soundfonts/"),
             ".",
         ]
@@ -250,10 +250,10 @@ class MidiOutputDevice(QObject):
                 return True
             else:
                 # Create virtual port
-                self.midi_out.open_virtual_port("PyDomino Output")
+                self.midi_out.open_virtual_port("DominoPy Output")
                 self.is_initialized = True
                 self.midi_ready.emit()
-                print_debug("MIDI virtual port created: PyDomino Output")
+                print_debug("MIDI virtual port created: DominoPy Output")
                 return True
                 
         except Exception as e:

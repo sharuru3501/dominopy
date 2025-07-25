@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Debug crash issues with PyDomino
+Debug crash issues with DominoPy
 """
 import sys
 import os
@@ -31,7 +31,7 @@ def crash_handler(signum, frame):
 
 def main():
     """Main debug application"""
-    print("=== PyDomino Debug Mode ===")
+    print("=== DominoPy Debug Mode ===")
     
     # Install signal handlers
     signal.signal(signal.SIGINT, crash_handler)
@@ -41,14 +41,14 @@ def main():
         # Import and run the application with extra error handling
         from PySide6.QtWidgets import QApplication
         from PySide6.QtCore import Qt
-        from src.ui.main_window import PyDominoMainWindow
+        from src.ui.main_window import DominoPyMainWindow
         
         # Create QApplication with debug flags
         app = QApplication(sys.argv)
         app.setAttribute(Qt.AA_DontUseNativeDialogs)
         
         # Create and show main window
-        window = PyDominoMainWindow()
+        window = DominoPyMainWindow()
         window.show()
         
         print("Application started successfully")

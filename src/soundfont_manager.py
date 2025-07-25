@@ -26,7 +26,7 @@ class SoundFontInfo:
         return self.size / (1024 * 1024)
 
 class SoundFontManager(QObject):
-    """Manages SoundFont files for PyDomino"""
+    """Manages SoundFont files for DominoPy"""
     
     # Signals
     soundfonts_changed = Signal()
@@ -41,7 +41,7 @@ class SoundFontManager(QObject):
         
     def _get_user_soundfont_dir(self) -> str:
         """Get user soundfont directory (macOS Application Support)"""
-        return os.path.expanduser("~/Library/Application Support/PyDomino/soundfonts")
+        return os.path.expanduser("~/Library/Application Support/DominoPy/soundfonts")
     
     def _get_builtin_soundfont_dir(self) -> str:
         """Get builtin soundfont directory"""
@@ -65,15 +65,15 @@ class SoundFontManager(QObject):
         readme_path = os.path.join(self.user_soundfont_dir, "README.txt")
         if not os.path.exists(readme_path):
             with open(readme_path, 'w') as f:
-                f.write("""PyDomino SoundFont Directory
+                f.write("""DominoPy SoundFont Directory
 
 This directory is where you can place additional SoundFont (.sf2) files
-for use with PyDomino.
+for use with DominoPy.
 
 To add a new SoundFont:
 1. Download a .sf2 file
 2. Copy it to this directory
-3. Restart PyDomino
+3. Restart DominoPy
 4. Select the new SoundFont in Audio Sources
 
 Recommended SoundFonts:

@@ -1,5 +1,5 @@
 """
-MIDI Input System for PyDomino
+MIDI Input System for DominoPy
 Receives MIDI from external sources (Strudel, DAWs, MIDI files)
 """
 import json
@@ -161,7 +161,7 @@ class MIDIInputSystem(QObject):
             if device.port_index >= 0 and RTMIDI_AVAILABLE:
                 # Hardware MIDI device
                 midiin = rtmidi.MidiIn()
-                midiin.open_port(device.port_index, f"PyDomino <- {device.name}")
+                midiin.open_port(device.port_index, f"DominoPy <- {device.name}")
                 midiin.set_callback(lambda msg, data: self._handle_midi_message(msg, device_id))
                 
                 self.active_connections[device_id] = midiin
@@ -432,7 +432,7 @@ class MIDIInputSystem(QObject):
             self.event_callbacks.remove(callback)
     
     def send_to_audio_system(self, event: MIDIInputEvent):
-        """MIDIイベントをPyDominoのオーディオシステムに送信"""
+        """MIDIイベントをDominoPyのオーディオシステムに送信"""
         try:
             from src.audio_system import get_audio_manager
             

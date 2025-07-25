@@ -14,12 +14,12 @@ def check_code_quality():
     
     def run_check():
         try:
-            from src.ui.main_window import PyDominoMainWindow
+            from src.ui.main_window import DominoPyMainWindow
             from src.audio_system import get_audio_manager
             from src.midi_routing import get_midi_routing_manager
             from src.playback_engine import get_playback_engine
             
-            window = PyDominoMainWindow()
+            window = DominoPyMainWindow()
             window.show()
             
             def check_audio_robustness():

@@ -1,4 +1,4 @@
-# PyDomino ビルド手順書
+# DominoPy ビルド手順書
 
 ## Mac版アプリバンドル作成
 
@@ -16,16 +16,16 @@ pip install pyinstaller pyaudio
 ### ビルド実行
 ```bash
 # プロジェクトルートで実行
-pyinstaller PyDomino.spec
+pyinstaller DominoPy.spec
 ```
 
 ### 成果物確認
 ```bash
 # アプリ起動
-open dist/PyDomino.app
+open dist/DominoPy.app
 
 # アプリサイズ確認
-du -sh dist/PyDomino.app
+du -sh dist/DominoPy.app
 ```
 
 ## トラブルシューティング
@@ -33,22 +33,22 @@ du -sh dist/PyDomino.app
 ### 音声が出ない場合
 - FluidSynthライブラリが正しく含まれているか確認：
 ```bash
-find dist/PyDomino.app -name "*fluid*"
+find dist/DominoPy.app -name "*fluid*"
 ```
 
 ### アプリが起動しない場合
 - ターミナルから直接実行してエラー確認：
 ```bash
-./dist/PyDomino.app/Contents/MacOS/PyDomino
+./dist/DominoPy.app/Contents/MacOS/DominoPy
 ```
 
 ### srcモジュールエラー
-- PyDomino.specの`datas`設定を確認
+- DominoPy.specの`datas`設定を確認
 - プロジェクトルートから実行されているか確認
 
 ## 設定ファイル
 
-### PyDomino.spec
+### DominoPy.spec
 主要設定項目：
 - `binaries`: FluidSynthライブラリパス
 - `datas`: サウンドフォント、srcディレクトリ
@@ -57,7 +57,7 @@ find dist/PyDomino.app -name "*fluid*"
 ### 更新が必要な場合
 FluidSynthのバージョンが変わった場合：
 1. `brew --prefix fluid-synth`でパス確認
-2. PyDomino.specの`binaries`セクション更新
+2. DominoPy.specの`binaries`セクション更新
 3. 再ビルド
 
 ## 次のステップ

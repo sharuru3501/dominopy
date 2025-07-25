@@ -1,6 +1,6 @@
 # 🎼 Soundfonts Directory
 
-PyDominoは標準でFluidSynthの内蔵音源を使用しますが、高品質なサウンドフォント(.sf2ファイル)を追加することで音質を向上できます。
+DominoPyは標準でFluidSynthの内蔵音源を使用しますが、高品質なサウンドフォント(.sf2ファイル)を追加することで音質を向上できます。
 
 ## 📥 推奨サウンドフォント
 
@@ -18,7 +18,7 @@ PyDominoは標準でFluidSynthの内蔵音源を使用しますが、高品質�
 
 1. サウンドフォントファイル(.sf2)をダウンロード
 2. この`soundfonts/`ディレクトリに配置
-3. PyDominoを再起動
+3. DominoPyを再起動
 4. Audio → Audio Sources でサウンドフォントを選択
 
 ## 📝 注意事項
@@ -32,7 +32,7 @@ PyDominoは標準でFluidSynthの内蔵音源を使用しますが、高品質�
 **音が出ない場合:**
 1. サウンドフォントファイルが正しく配置されているか確認
 2. ファイル名に日本語や特殊文字が含まれていないか確認  
-3. PyDominoを再起動
+3. DominoPyを再起動
 4. Audio Settingsで正しいサウンドフォントが選択されているか確認
 
 ---

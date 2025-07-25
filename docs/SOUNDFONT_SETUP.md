@@ -1,18 +1,18 @@
-# 🎼 PyDomino 音源セットアップガイド
+# 🎼 DominoPy 音源セットアップガイド
 
-PyDominoで音を出すには、サウンドフォント(.sf2)ファイルが必要です。
+DominoPyで音を出すには、サウンドフォント(.sf2)ファイルが必要です。
 
 ## 📁 サウンドフォントファイルの配置場所
 
 ### macOS App版の場合
 ```
-/Applications/PyDomino.app/Contents/Resources/soundfonts/
+/Applications/DominoPy.app/Contents/Resources/soundfonts/
 ```
 この中に`.sf2`ファイルを置くだけで自動的に認識されます。
 
 ### 開発版の場合  
 ```
-PyDomino/soundfonts/
+DominoPy/soundfonts/
 ```
 プロジェクトの`soundfonts`フォルダに配置します。
 
@@ -34,7 +34,7 @@ PyDomino/soundfonts/
 
 1. **サウンドフォントファイルをダウンロード**
 2. **上記フォルダに配置**（フォルダ作成は不要）
-3. **PyDominoを起動**
+3. **DominoPyを起動**
 4. **Audio → Audio Sources** でサウンドフォントを選択
 
 ## 🔧 音が出ない場合の確認事項
@@ -42,7 +42,7 @@ PyDomino/soundfonts/
 - ファイルが正しいフォルダに配置されているか
 - ファイル名に日本語文字が含まれていないか  
 - ファイルサイズが正常か（ダウンロード途中で止まっていないか）
-- PyDominoを再起動してみる
+- DominoPyを再起動してみる
 
 ## 💡 使い方のコツ
 
@@ -52,4 +52,4 @@ PyDomino/soundfonts/
 
 ---
 
-**これで PyDomino で音楽制作を楽しめます！🎵**
+**これで DominoPy で音楽制作を楽しめます！🎵**

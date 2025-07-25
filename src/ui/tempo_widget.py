@@ -1,5 +1,5 @@
 """
-Tempo and time signature control widget for PyDomino
+Tempo and time signature control widget for DominoPy
 """
 from PySide6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QLabel, 
                               QSpinBox, QComboBox, QPushButton, QGroupBox)

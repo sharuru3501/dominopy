@@ -1,5 +1,5 @@
 """
-Status bar for PyDomino
+Status bar for DominoPy
 Displays real-time information about notes, chords, tempo, and playback
 """
 from PySide6.QtWidgets import QStatusBar, QLabel, QWidget, QHBoxLayout, QVBoxLayout

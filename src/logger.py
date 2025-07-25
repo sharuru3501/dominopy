@@ -1,5 +1,5 @@
 """
-Logging system for PyDomino
+Logging system for DominoPy
 Provides centralized logging with configurable levels
 """
 import logging

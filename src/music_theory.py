@@ -1,5 +1,5 @@
 """
-Music theory utilities for PyDomino
+Music theory utilities for DominoPy
 Handles note names, chord detection, and music analysis
 """
 from typing import List, Set, Dict, Optional, Tuple

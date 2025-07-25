@@ -1,5 +1,5 @@
 """
-MIDI Routing System for PyDomino
+MIDI Routing System for DominoPy
 Manages external MIDI connections and virtual MIDI routing
 """
 import threading
@@ -79,7 +79,7 @@ class MIDIRoutingManager(QObject):
             name="Internal FluidSynth (Built-in)",
             port_index=-1,
             output_type=MIDIOutputType.INTERNAL_FLUIDSYNTH,
-            description="PyDomino built-in FluidSynth audio engine"
+            description="DominoPy built-in FluidSynth audio engine"
         )
         self.available_devices[internal_device.id] = internal_device
     
@@ -216,7 +216,7 @@ class MIDIRoutingManager(QObject):
                     return False
                 
                 midiout = rtmidi.MidiOut()
-                midiout.open_port(device.port_index, f"PyDomino -> {device.name}")
+                midiout.open_port(device.port_index, f"DominoPy -> {device.name}")
                 self.active_connections[device_id] = midiout
                 self.connection_status.emit(device_id, True)
                 print(f"Connected to MIDI device: {device.name}")

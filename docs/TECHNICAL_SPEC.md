@@ -1,9 +1,9 @@
-# PyDomino - 技術仕様書
+# DominoPy - 技術仕様書
 
 ## 1. システム概要
 
 ### 1.1 アーキテクチャ概要
-PyDominoは、Model-View-Controller（MVC）パターンを基盤とした、モジュラー設計のMIDIシーケンサーです。
+DominoPyは、Model-View-Controller（MVC）パターンを基盤とした、モジュラー設計のMIDIシーケンサーです。
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -112,7 +112,7 @@ class ProjectSettings:
 
 #### 3.1.1 メインウィンドウ (main_window.py)
 ```python
-class PyDominoMainWindow(QMainWindow):
+class DominoPyMainWindow(QMainWindow):
     def __init__(self):
         # Layout: HBoxLayout
         # Components: PianoKeyboardWidget + PianoRollWidget

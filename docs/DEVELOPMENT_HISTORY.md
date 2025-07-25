@@ -1,7 +1,7 @@
-# PyDomino 開発履歴
+# DominoPy 開発履歴
 
 ## 概要
-PyDominoは、PySide6を使用したクロスプラットフォーム対応のMIDIピアノロールアプリケーションです。
+DominoPyは、PySide6を使用したクロスプラットフォーム対応のMIDIピアノロールアプリケーションです。
 このドキュメントは、開発過程で実装された機能や修正の詳細な履歴を記録します。
 
 ## 開発履歴
@@ -297,7 +297,7 @@ black_note_offsets = [1, 3, 6, 8, 10, 13, 15]
 **プロジェクト整理**: 不要なプロトタイプファイルの削除とGit管理の整備
 
 #### 🎯 整理目標
-- Strudelローカル実行環境確立により、PyDomino内実装が不要となったため整理
+- Strudelローカル実行環境確立により、DominoPy内実装が不要となったため整理
 - プロダクションコードのクリーンアップとディレクトリ構成の最適化
 
 #### 📋 削除対象
@@ -342,7 +342,7 @@ docs/TERMINAL_FEATURE_PLAN.md
 **プロトタイプ開発**: ライブコーディング統合に向けた実験的実装
 
 #### 🎯 実装目標
-- PyDominoにターミナル機能を追加してStrudelライブコーディングとの連携を実現
+- DominoPyにターミナル機能を追加してStrudelライブコーディングとの連携を実現
 - フレキシブルなレイアウト対応（ドッキング、タブ表示）
 - Node.js統合によるJavaScript実行環境の構築
 - 将来的な汎用ターミナル化への拡張基盤準備
@@ -401,9 +401,9 @@ docs/TERMINAL_FEATURE_PLAN.md
 - エラーハンドリング: ✅ 正常動作
 
 #### 🚀 将来の拡張計画
-1. **PyDominoメインUI統合**: 実際のアプリケーションへの組み込み
+1. **DominoPyメインUI統合**: 実際のアプリケーションへの組み込み
 2. **Strudel統合**: npm + Strudelライブラリの統合
-3. **MIDI連携**: PyDominoとの双方向MIDI通信
+3. **MIDI連携**: DominoPyとの双方向MIDI通信
 4. **汎用ターミナル化**: 他言語サポート拡張
 
 #### 📚 アーキテクチャ設計パターン
@@ -482,7 +482,7 @@ docs/TERMINAL_FEATURE_PLAN.md
 **コミット**: `7e5eb4e` - "Implement Mac app bundle creation with PyInstaller"
 
 #### 🎯 実装目標
-- macOSでメニューバーに「Python」ではなく「PyDomino」を表示
+- macOSでメニューバーに「Python」ではなく「DominoPy」を表示
 - クロスプラットフォーム対応を維持しながらネイティブアプリ化
 - 開発効率を損なわない配布戦略の確立
 
@@ -495,7 +495,7 @@ docs/TERMINAL_FEATURE_PLAN.md
 
 **2. PyInstallerによるアプリバンドル化**
 - py2appからPyInstallerに変更（Python runtimeエラー回避）
-- `PyDomino.spec`設定ファイル作成
+- `DominoPy.spec`設定ファイル作成
 - FluidSynthライブラリの動的リンクを解決
 
 **3. 音声出力問題の解決**
@@ -506,9 +506,9 @@ docs/TERMINAL_FEATURE_PLAN.md
 **4. アプリケーション設定の最適化**
 - `src/main.py`でアプリケーション名設定を追加:
   ```python
-  app.setApplicationName("PyDomino")
-  app.setApplicationDisplayName("PyDomino")
-  app.setOrganizationName("PyDomino")
+  app.setApplicationName("DominoPy")
+  app.setApplicationDisplayName("DominoPy")
+  app.setOrganizationName("DominoPy")
   app.setOrganizationDomain("pydomino.app")
   ```
 - Info.plistでバンドル情報を設定
@@ -522,7 +522,7 @@ docs/TERMINAL_FEATURE_PLAN.md
 #### 🔧 技術的詳細
 
 **作成・変更されたファイル:**
-- `PyDomino.spec`: PyInstaller設定ファイル
+- `DominoPy.spec`: PyInstaller設定ファイル
 - `setup.py`: py2app設定（参考用）
 - `BUILD_INSTRUCTIONS.md`: ビルド手順書
 - `docs/DEVELOPMENT_PLAN.md`: 開発計画更新
@@ -536,11 +536,11 @@ docs/TERMINAL_FEATURE_PLAN.md
 **ビルドコマンド:**
 ```bash
 pip install pyinstaller pyaudio
-pyinstaller PyDomino.spec
+pyinstaller DominoPy.spec
 ```
 
 #### ✅ 成果
-- macOSでメニューバーに「PyDomino」と正しく表示
+- macOSでメニューバーに「DominoPy」と正しく表示
 - 音声出力が正常に動作
 - 約215MBのスタンドアロンアプリケーション作成
 - 開発フローに影響なし

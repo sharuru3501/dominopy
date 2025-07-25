@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Setup script for PyDomino Mac app bundling
+Setup script for DominoPy Mac app bundling
 """
 
 from setuptools import setup
@@ -15,9 +15,9 @@ OPTIONS = {
     'iconfile': None,  # Will add icon later
     'site_packages': True,
     'plist': {
-        'CFBundleName': 'PyDomino',
-        'CFBundleDisplayName': 'PyDomino',
-        'CFBundleIdentifier': 'app.pydomino.PyDomino',
+        'CFBundleName': 'DominoPy',
+        'CFBundleDisplayName': 'DominoPy',
+        'CFBundleIdentifier': 'app.pydomino.DominoPy',
         'CFBundleVersion': '1.0.0',
         'CFBundleShortVersionString': '1.0.0',
         'CFBundleInfoDictionaryVersion': '6.0',
@@ -44,7 +44,7 @@ OPTIONS = {
 }
 
 setup(
-    name='PyDomino',
+    name='DominoPy',
     app=APP,
     data_files=DATA_FILES,
     options={'py2app': OPTIONS},

@@ -1,20 +1,20 @@
-# PyDomino 変更履歴
+# DominoPy 変更履歴
 
 ## 概要
-このファイルは、PyDominoの各バージョンでの変更点を記録します。
+このファイルは、DominoPyの各バージョンでの変更点を記録します。
 [Keep a Changelog](https://keepachangelog.com/ja/1.0.0/)形式に従います。
 
 ## [Unreleased]
 
 ### Added
 - Mac版アプリバンドル作成機能
-- PyInstaller設定ファイル（PyDomino.spec）
+- PyInstaller設定ファイル（DominoPy.spec）
 - ビルド手順書（BUILD_INSTRUCTIONS.md）
 - 開発履歴ドキュメント（DEVELOPMENT_HISTORY.md）
 - 変更履歴管理システム（CHANGELOG.md）
 
 ### Changed
-- メニューバーでのアプリ名表示を「Python」から「PyDomino」に変更
+- メニューバーでのアプリ名表示を「Python」から「DominoPy」に変更
 - アプリケーション設定の最適化（setApplicationName等）
 
 ### Fixed

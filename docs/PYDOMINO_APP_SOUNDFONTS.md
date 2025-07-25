@@ -1,17 +1,17 @@
-# PyDomino.app サウンドフォント追加ガイド
+# DominoPy.app サウンドフォント追加ガイド
 
 ## 概要
 
-PyDomino.appでは、デフォルトでTimGM6mb.sf2サウンドフォントが内蔵されていますが、追加のサウンドフォントを使用することができます。
+DominoPy.appでは、デフォルトでTimGM6mb.sf2サウンドフォントが内蔵されていますが、追加のサウンドフォントを使用することができます。
 
 ## サウンドフォント追加方法
 
 ### 1. サウンドフォントフォルダーを開く
 
-PyDomino.appのサウンドフォントフォルダーは以下の場所にあります：
+DominoPy.appのサウンドフォントフォルダーは以下の場所にあります：
 
 ```
-~/Library/Application Support/PyDomino/soundfonts/
+~/Library/Application Support/DominoPy/soundfonts/
 ```
 
 ### 2. フォルダーの作成
@@ -19,7 +19,7 @@ PyDomino.appのサウンドフォントフォルダーは以下の場所にあ�
 初回使用時は自動的にフォルダーが作成されますが、手動で作成することもできます：
 
 ```bash
-mkdir -p ~/Library/Application\ Support/PyDomino/soundfonts/
+mkdir -p ~/Library/Application\ Support/DominoPy/soundfonts/
 ```
 
 ### 3. サウンドフォントファイルの配置
@@ -28,16 +28,16 @@ mkdir -p ~/Library/Application\ Support/PyDomino/soundfonts/
 
 ```bash
 # 例：FluidR3_GM.sf2をコピーする場合
-cp /path/to/FluidR3_GM.sf2 ~/Library/Application\ Support/PyDomino/soundfonts/
+cp /path/to/FluidR3_GM.sf2 ~/Library/Application\ Support/DominoPy/soundfonts/
 ```
 
-### 4. PyDomino.appの再起動
+### 4. DominoPy.appの再起動
 
-サウンドフォントを追加した後は、PyDomino.appを再起動してください。
+サウンドフォントを追加した後は、DominoPy.appを再起動してください。
 
 ## サウンドフォント選択
 
-1. PyDomino.appを起動
+1. DominoPy.appを起動
 2. メニューバーから `Audio` → `Audio Settings...` を選択
 3. 利用可能なサウンドフォントから選択
 
@@ -67,36 +67,36 @@ cp /path/to/FluidR3_GM.sf2 ~/Library/Application\ Support/PyDomino/soundfonts/
 
 ## Python版との違い
 
-| 項目 | Python版 (run_app.py) | PyDomino.app |
+| 項目 | Python版 (run_app.py) | DominoPy.app |
 |------|----------------------|-------------|
-| サウンドフォント保存場所 | `./soundfonts/` | `~/Library/Application Support/PyDomino/soundfonts/` |
+| サウンドフォント保存場所 | `./soundfonts/` | `~/Library/Application Support/DominoPy/soundfonts/` |
 | 設定方法 | プロジェクトフォルダーに配置 | アプリケーションサポートフォルダーに配置 |
 | 再起動の必要性 | 不要（自動検出） | 必要 |
 
 ## トラブルシューティング
 
 ### サウンドフォントが認識されない場合
-1. ファイルパスを確認：`~/Library/Application Support/PyDomino/soundfonts/`
+1. ファイルパスを確認：`~/Library/Application Support/DominoPy/soundfonts/`
 2. ファイル形式を確認：`.sf2` 拡張子
-3. PyDomino.appを再起動
+3. DominoPy.appを再起動
 4. ファイルサイズを確認：10KB以上のファイルのみ認識
 
 ### フォルダーが見つからない場合
 ```bash
 # Finderで開く
-open ~/Library/Application\ Support/PyDomino/soundfonts/
+open ~/Library/Application\ Support/DominoPy/soundfonts/
 
 # 存在しない場合は作成
-mkdir -p ~/Library/Application\ Support/PyDomino/soundfonts/
+mkdir -p ~/Library/Application\ Support/DominoPy/soundfonts/
 ```
 
 ### 権限エラーが発生する場合
 ```bash
 # フォルダーの権限を確認
-ls -la ~/Library/Application\ Support/PyDomino/
+ls -la ~/Library/Application\ Support/DominoPy/
 
 # 権限を修正（必要に応じて）
-chmod 755 ~/Library/Application\ Support/PyDomino/soundfonts/
+chmod 755 ~/Library/Application\ Support/DominoPy/soundfonts/
 ```
 
 ## 参考リンク
