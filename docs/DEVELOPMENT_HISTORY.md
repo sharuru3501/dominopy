@@ -252,6 +252,86 @@ Chord at playhead: C (C, E, G)
 - **初期化順序**: 適切なタイミング制御による安定性向上
 - **エラーハンドリング**: nullチェックの統一による堅牢性向上
 
+### 2025-07-25: GM Instrument音色変更機能の修復
+**音楽機能修正**: Select GM Instrumentダイアログでの楽器変更が正常に反映されるよう修正
+
+#### 🎯 問題の背景
+- **音色固定問題**: GM Instrumentダイアログで楽器を変更してもGrand Piano音色のまま変わらない
+- **根本原因特定**: AudioSourceManagerの`assign_source_to_track()`メソッドでプログラム番号上書き
+- **ユーザー体験**: 楽器選択機能が事実上無効化されている状態
+
+#### 🔍 問題の詳細調査
+
+**症状の再現**
+```
+GM Instrument変更をシミュレート: Flute (program=73)
+Applied track 0 program 0 to soundfont GM: Flute  ← program=0に強制上書き
+AudioRoutingCoordinator: Track 0 program: 0, channel: 0  ← 常にピアノ
+```
+
+**原因箇所**: `src/audio_source_manager.py`の`assign_source_to_track()`メソッド（206-221行目）
+- GM Instrumentダイアログで作成される`internal_fluidsynth_ch*`ソースも`get_track_program_for_soundfont()`による上書き対象
+- トラック0の場合、常にDEFAULT_TRACK_PROGRAMS[0]=0（ピアノ）が強制設定される
+
+#### 📋 実装した修正内容
+
+**修正方針**: GM専用ソースのプログラム番号保護
+- 通常のサウンドフォントファイル: 従来通りデフォルトプログラム適用
+- GM専用ソース（`internal_fluidsynth_ch*`）: 選択されたプログラム番号を保持
+
+**修正前のコード**
+```python
+# For soundfont sources, apply track-specific program
+source = self.available_sources[source_id]
+if source.source_type == AudioSourceType.SOUNDFONT:
+    source.program = get_track_program_for_soundfont(track_index, source.name)
+    source.channel = track_index % 16
+```
+
+**修正後のコード**
+```python
+# For soundfont sources, apply track-specific program
+source = self.available_sources[source_id]
+if source.source_type == AudioSourceType.SOUNDFONT:
+    # GM Instrumentダイアログで作成されたソースはプログラム保持
+    if not source_id.startswith("internal_fluidsynth_ch"):
+        source.program = get_track_program_for_soundfont(track_index, source.name)
+        source.channel = track_index % 16
+        print(f"Applied track {track_index} program {source.program} to soundfont {source.name}")
+    else:
+        # GM専用ソースはプログラム番号を保持
+        source.channel = track_index % 16  # チャンネルのみ更新
+        print(f"Preserved GM instrument program {source.program} for track {track_index}")
+```
+
+#### 🎨 修正効果の検証
+
+**修正後の正常動作**
+```
+Preserved GM instrument program 73 for track 0  ← 正しく保持
+📌 Assigned internal_fluidsynth_ch0 to track 0 (program: 73)
+AudioRoutingCoordinator: Track 0 program: 73, channel: 0  ← 73で設定
+✅ AudioRoutingCoordinator: Set program 73 (GM: Flute) for channel 0
+```
+
+**全楽器での動作確認**
+- **Acoustic Grand Piano (0)**: ✅ 正常
+- **Violin (40)**: ✅ 正常  
+- **Flute (73)**: ✅ 正常
+- **Reverse Cymbal (120)**: ✅ 正常
+- **Steel String Guitar (25)**: ✅ 正常
+
+#### 🚀 成果
+- **楽器変更機能の完全復活**: GM Instrumentダイアログでの楽器選択が即座に音色に反映
+- **後方互換性**: 既存のサウンドフォントファイルの動作に影響なし
+- **マルチトラック対応**: 各トラックで独立した楽器選択が可能
+- **リアルタイム反映**: 楽器変更後すぐに新しい音色でプレビュー可能
+
+#### 🔄 技術的改善
+- **条件分岐による保護**: GM専用ソース識別による適切な処理分岐
+- **デバッグ改善**: プログラム保持の明確なログ出力
+- **型安全性**: AudioSourceのプログラム番号整合性確保
+
 ---
 
 ### 2025-07-23: ピアノロールノート編集機能の大幅改善

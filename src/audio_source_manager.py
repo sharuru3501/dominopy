@@ -205,14 +205,20 @@ class AudioSourceManager(QObject):
         # For soundfont sources, apply track-specific program
         source = self.available_sources[source_id]
         if source.source_type == AudioSourceType.SOUNDFONT:
-            try:
-                from src.track_manager import get_track_program_for_soundfont
-                # Update the source with track-specific program based on soundfont type
-                source.program = get_track_program_for_soundfont(track_index, source.name)
-                source.channel = track_index % 16
-                print(f"Applied track {track_index} program {source.program} to soundfont {source.name}")
-            except ImportError:
-                pass
+            # GM Instrumentダイアログで作成されたソースはプログラム保持
+            if not source_id.startswith("internal_fluidsynth_ch"):
+                try:
+                    from src.track_manager import get_track_program_for_soundfont
+                    # Update the source with track-specific program based on soundfont type
+                    source.program = get_track_program_for_soundfont(track_index, source.name)
+                    source.channel = track_index % 16
+                    print(f"Applied track {track_index} program {source.program} to soundfont {source.name}")
+                except ImportError:
+                    pass
+            else:
+                # GM専用ソースはプログラム番号を保持
+                source.channel = track_index % 16  # チャンネルのみ更新
+                print(f"Preserved GM instrument program {source.program} for track {track_index}")
         
         # Emit signal to notify UI of source assignment change
         self.sources_updated.emit()
