@@ -554,7 +554,18 @@ class PianoRollWidget(QWidget):
                     if handled:
                         return
                 
-                # Convert click to tick position
+                # Check if we're right-clicking on a note
+                clicked_note = self._find_note_at_position(clicked_x, clicked_y)
+                if clicked_note:
+                    # If clicking on a note, play selected notes as chord
+                    if clicked_note not in self.selected_notes:
+                        # If the note isn't selected, select it first
+                        self.selected_notes = [clicked_note]
+                    self._play_selected_notes_as_chord()
+                    self.update()
+                    return
+                
+                # If not clicking on a note, convert click to tick position
                 clicked_tick = self._x_to_tick(clicked_x)
                 
                 # Move playhead to clicked position and play chord
@@ -2760,10 +2771,6 @@ class PianoRollWidget(QWidget):
         if not self.selected_notes:
             return
         
-        audio_manager = get_audio_manager()
-        if not audio_manager:
-            return
-        
         # Get pitches from selected notes
         pitches = [note.pitch for note in self.selected_notes]
         
@@ -2805,28 +2812,26 @@ class PianoRollWidget(QWidget):
             return
         
         # Play the notes as a chord
-        audio_manager = get_audio_manager()
-        if audio_manager:
-            pitches = [note.pitch for note in notes_at_playhead]
-            self._play_chord_preview(pitches, 100)
-            
-            # Analyze and display chord information
-            from src.music_theory import detect_chord, get_note_name_with_octave
-            
-            chord = detect_chord(pitches)
-            if chord:
-                # Get chord notes and format
-                chord_notes = [note.name for note in chord.notes[:6]]  # First 6 notes
-                if len(chord.notes) > 6:
-                    chord_notes.append("...")
-                chord_info = f"{chord.name} ({', '.join(chord_notes)})"
-                print(f"Chord at playhead: {chord_info}")
-                self._display_chord_info(chord_info)
-            else:
-                note_names = [get_note_name_with_octave(pitch) for pitch in sorted(pitches)]
-                notes_info = f"{', '.join(note_names)}"
-                print(f"Notes at playhead: {notes_info}")
-                self._display_chord_info(notes_info)
+        pitches = [note.pitch for note in notes_at_playhead]
+        self._play_chord_preview(pitches, 100)
+        
+        # Analyze and display chord information
+        from src.music_theory import detect_chord, get_note_name_with_octave
+        
+        chord = detect_chord(pitches)
+        if chord:
+            # Get chord notes and format
+            chord_notes = [note.name for note in chord.notes[:6]]  # First 6 notes
+            if len(chord.notes) > 6:
+                chord_notes.append("...")
+            chord_info = f"{chord.name} ({', '.join(chord_notes)})"
+            print(f"Chord at playhead: {chord_info}")
+            self._display_chord_info(chord_info)
+        else:
+            note_names = [get_note_name_with_octave(pitch) for pitch in sorted(pitches)]
+            notes_info = f"{', '.join(note_names)}"
+            print(f"Notes at playhead: {notes_info}")
+            self._display_chord_info(notes_info)
     
     def _display_chord_info(self, info: str):
         """Display chord information in the top bar (placeholder)"""
@@ -2861,7 +2866,7 @@ class PianoRollWidget(QWidget):
         audio_source_manager = get_audio_source_manager()
         if audio_source_manager:
             track_source = audio_source_manager.get_track_source(active_track_index)
-            if track_source and track_source.source_type == AudioSourceType.NONE:
+            if not track_source:
                 print(f"PianoRoll: Track {active_track_index} has no audio source - skipping chord preview")
                 return False
         
@@ -2870,6 +2875,14 @@ class PianoRollWidget(QWidget):
         if not coordinator or coordinator.state.value != "ready":
             print(f"PianoRoll: Audio routing coordinator not ready, using legacy fallback for chord")
             return self._play_chord_preview_legacy(pitches, velocity)
+        
+        # Ensure track route exists before playing chord
+        if active_track_index not in coordinator.track_routes:
+            print(f"PianoRoll: No route exists for track {active_track_index} (chord), setting up...")
+            setup_success = coordinator.setup_track_route(active_track_index)
+            if not setup_success:
+                print(f"PianoRoll: Failed to setup route for track {active_track_index} (chord), using legacy fallback")
+                return self._play_chord_preview_legacy(pitches, velocity)
         
         # Play all notes in the chord simultaneously
         from src.midi_data_model import MidiNote
@@ -2904,6 +2917,27 @@ class PianoRollWidget(QWidget):
         
         return False
     
+    def _find_note_at_position(self, clicked_x: float, clicked_y: float):
+        """指定された位置にあるノートを見つける"""
+        if not self.midi_project:
+            return None
+        
+        grid_start_x = self.piano_width if self.show_piano_keyboard else 0
+        
+        for track in self.midi_project.tracks:
+            for note in track.notes:
+                note_x = self._tick_to_x(note.start_tick) + grid_start_x
+                note_y = self._pitch_to_y(note.pitch)
+                note_width = note.duration * self.pixels_per_tick
+                note_height = self.pixels_per_pitch
+
+                # Check if click is within note bounds
+                if note_x <= clicked_x < (note_x + note_width) and \
+                   note_y <= clicked_y < (note_y + note_height):
+                    return note
+        
+        return None
+    
     def _play_chord_preview_legacy(self, pitches: List[int], velocity: int = 100):
         """Legacy fallback for chord preview when coordinator is not available"""
         from src.midi_routing import get_midi_routing_manager
@@ -2925,7 +2959,7 @@ class PianoRollWidget(QWidget):
         track_source = None
         if audio_source_manager:
             track_source = audio_source_manager.get_track_source(active_track_index)
-            if track_source and track_source.source_type == AudioSourceType.NONE:
+            if not track_source:
                 print(f"PianoRoll: Track {active_track_index} has no audio source - skipping chord preview")
                 return False
         
@@ -2980,9 +3014,10 @@ class PianoRollWidget(QWidget):
         audio_source_manager = get_audio_source_manager()
         if audio_source_manager:
             track_source = audio_source_manager.get_track_source(active_track_index)
-            if track_source and track_source.source_type == AudioSourceType.NONE:
+            if not track_source:
                 print(f"PianoRoll: Track {active_track_index} has no audio source - skipping note preview")
                 return False
+            print(f"PianoRoll: Track {active_track_index} using audio source: {track_source.name}")
         
         # Get unified audio routing coordinator
         coordinator = get_audio_routing_coordinator()
@@ -3014,8 +3049,17 @@ class PianoRollWidget(QWidget):
             channel=active_track_index  # Use track index as channel
         )
         
-        # Use unified audio routing coordinator
+        # Ensure track route exists before playing
         try:
+            # Force route setup if it doesn't exist
+            if active_track_index not in coordinator.track_routes:
+                print(f"PianoRoll: No route exists for track {active_track_index}, setting up...")
+                setup_success = coordinator.setup_track_route(active_track_index)
+                if not setup_success:
+                    print(f"PianoRoll: Failed to setup route for track {active_track_index}, using legacy fallback")
+                    return self._play_track_preview_legacy(pitch, velocity)
+            
+            # Use unified audio routing coordinator
             success = coordinator.play_note(active_track_index, preview_note)
             if success:
                 self.active_preview_notes.add(pitch)
@@ -3075,7 +3119,7 @@ class PianoRollWidget(QWidget):
         midi_router = get_midi_routing_manager()
         if midi_router:
             # Skip preview if track has no audio source
-            if track_source and track_source.source_type == AudioSourceType.NONE:
+            if not track_source:
                 print(f"PianoRoll: Track {active_track_index} has no audio source - skipping note preview")
                 return False
             
@@ -3104,7 +3148,7 @@ class PianoRollWidget(QWidget):
         audio_manager = get_audio_manager()
         if audio_manager:
             # Skip preview if track has no audio source
-            if track_source and track_source.source_type == AudioSourceType.NONE:
+            if not track_source:
                 print(f"PianoRoll: Track {active_track_index} has no audio source - skipping audio manager preview")
                 return False
             

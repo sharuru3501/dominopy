@@ -530,6 +530,79 @@ class DominoPyMainWindow(QMainWindow):
         self.logger.info(f"Audio source manager initialized with {len(audio_source_manager.get_available_sources())} sources")
         self.logger.info(f"  Soundfonts: {len(audio_source_manager.get_soundfont_sources())}")
         self.logger.info(f"  MIDI devices: {len(audio_source_manager.get_midi_sources())}")
+        
+        # Auto-assign default soundfont to all tracks for immediate playback
+        self._auto_assign_default_audio_sources(audio_source_manager)
+    
+    def _auto_assign_default_audio_sources(self, audio_source_manager):
+        """Auto-assign default soundfont to all tracks for immediate right-click/preview functionality"""
+        try:
+            soundfont_sources = audio_source_manager.get_soundfont_sources()
+            if not soundfont_sources:
+                self.logger.warning("No soundfont sources available for auto-assignment")
+                return
+            
+            # Use the first available soundfont as default
+            default_source = soundfont_sources[0]
+            self.logger.info(f"Auto-assigning default soundfont '{default_source.name}' to all tracks")
+            
+            # Get track manager (might not be initialized yet, so use deferred assignment)
+            from src.track_manager import get_track_manager
+            track_manager = get_track_manager()
+            
+            if track_manager and track_manager.project:
+                num_tracks = len(track_manager.project.tracks)
+            else:
+                num_tracks = 8  # Default number of tracks
+            
+            # Assign default soundfont to all tracks
+            assignment_count = 0
+            for track_index in range(num_tracks):
+                success = audio_source_manager.assign_source_to_track(track_index, default_source.id)
+                if success:
+                    assignment_count += 1
+                    print_debug(f"Auto-assigned '{default_source.name}' to track {track_index}")
+            
+            self.logger.info(f"Successfully auto-assigned default soundfont to {assignment_count}/{num_tracks} tracks")
+            
+            # Schedule additional assignment after track manager is fully initialized
+            QTimer.singleShot(300, lambda: self._validate_track_audio_assignments(audio_source_manager))
+            
+        except Exception as e:
+            self.logger.error(f"Failed to auto-assign default audio sources: {e}")
+    
+    def _validate_track_audio_assignments(self, audio_source_manager):
+        """Validate and fix any missing track audio assignments"""
+        try:
+            from src.track_manager import get_track_manager
+            track_manager = get_track_manager()
+            
+            if not track_manager:
+                self.logger.warning("Track manager not available for audio assignment validation")
+                return
+            
+            soundfont_sources = audio_source_manager.get_soundfont_sources()
+            if not soundfont_sources:
+                return
+            
+            default_source = soundfont_sources[0]
+            fixed_count = 0
+            
+            num_tracks = len(track_manager.project.tracks) if track_manager.project else 8
+            for track_index in range(num_tracks):
+                track_source = audio_source_manager.get_track_source(track_index)
+                if not track_source:
+                    # Track has no audio source - assign default
+                    success = audio_source_manager.assign_source_to_track(track_index, default_source.id)
+                    if success:
+                        fixed_count += 1
+                        print_debug(f"Fixed missing audio source for track {track_index}")
+            
+            if fixed_count > 0:
+                self.logger.info(f"Fixed {fixed_count} tracks with missing audio sources")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to validate track audio assignments: {e}")
     
     def _initialize_per_track_router(self):
         """Initialize the per-track audio router"""
@@ -1219,9 +1292,12 @@ class DominoPyMainWindow(QMainWindow):
             if audio_source_manager:
                 success = audio_source_manager.add_soundfont_file(file_path)
                 if success:
+                    # 新しく追加されたサウンドフォントを自動的にアクティブトラックに割り当て
+                    self._auto_assign_new_soundfont(file_path, audio_source_manager)
+                    
                     QMessageBox.information(
                         self, "成功", 
-                        f"サウンドフォント '{os.path.basename(file_path)}' が正常に追加されました！"
+                        f"サウンドフォント '{os.path.basename(file_path)}' が正常に追加され、アクティブトラックに自動割り当てされました！"
                     )
                     self.logger.info(f"サウンドフォントが追加されました: {file_path}")
                 else:
@@ -1249,6 +1325,49 @@ class DominoPyMainWindow(QMainWindow):
             source = audio_source_manager.available_sources.get(source_id)
             if source:
                 self.logger.info(f"トラック {active_track} のオーディオソースが {source.name} に変更されました")
+    
+    def _auto_assign_new_soundfont(self, file_path: str, audio_source_manager):
+        """新しく追加されたサウンドフォントを自動的にアクティブトラックに割り当て"""
+        try:
+            from src.track_manager import get_track_manager
+            from src.audio_routing_coordinator import get_audio_routing_coordinator
+            import os
+            
+            # アクティブトラックを取得
+            track_manager = get_track_manager()
+            if not track_manager:
+                return
+            
+            active_track = track_manager.get_active_track_index()
+            
+            # 新しいサウンドフォントのソースIDを見つける
+            filename = os.path.basename(file_path)
+            name = os.path.splitext(filename)[0]
+            source_id = f"soundfont_{name.lower().replace(' ', '_')}"
+            
+            # ソースをトラックに割り当て
+            assign_success = audio_source_manager.assign_source_to_track(active_track, source_id)
+            if assign_success:
+                self.logger.info(f"✅ Auto-assigned soundfont to track {active_track}")
+                
+                # オーディオルーティングを即座に更新
+                coordinator = get_audio_routing_coordinator()
+                if coordinator:
+                    refresh_success = coordinator.refresh_track_route(active_track)
+                    if refresh_success:
+                        self.logger.info(f"🎵 Track {active_track} audio routing updated in real-time")
+                    else:
+                        self.logger.warning(f"⚠️ Failed to refresh audio routing for track {active_track}")
+                
+                # UIを更新
+                if hasattr(self, 'track_list'):
+                    self.track_list.update_track_info()
+                
+            else:
+                self.logger.warning(f"❌ Failed to auto-assign soundfont to track {active_track}")
+                
+        except Exception as e:
+            self.logger.error(f"Error auto-assigning soundfont: {e}")
     
     def resizeEvent(self, event):
         """Handle window resize events to keep measure bar synchronized"""

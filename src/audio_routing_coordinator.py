@@ -125,12 +125,16 @@ class AudioRoutingCoordinator:
             print(f"AudioRoutingCoordinator: No audio source for track {track_index}")
             return False
         
+        print(f"AudioRoutingCoordinator: Found audio source for track {track_index}: {audio_source.name} (type: {audio_source.source_type})")
+        
         # Audio source found - proceed with routing setup
         
         # Check if audio source has a valid program (instrument)
         if audio_source.program is None:
-            print(f"AudioRoutingCoordinator: Track {track_index} has no instrument assigned - skipping route setup")
+            print(f"AudioRoutingCoordinator: Track {track_index} has no instrument assigned (program=None) - skipping route setup")
             return False
+        
+        print(f"AudioRoutingCoordinator: Track {track_index} program: {audio_source.program}, channel: {audio_source.channel}")
         
         # Allocate channel for track
         channel = self._allocate_channel(track_index, audio_source)
@@ -172,9 +176,20 @@ class AudioRoutingCoordinator:
         if not route:
             print(f"AudioRoutingCoordinator: No route for track {track_index}, attempting setup...")
             if not self.setup_track_route(track_index):
+                print(f"AudioRoutingCoordinator: Failed to setup route for track {track_index}")
                 return False
             route = self.track_routes.get(track_index)
             if not route:
+                print(f"AudioRoutingCoordinator: Route setup failed - no route created for track {track_index}")
+                return False
+        
+        # Verify route is still active
+        if not route.is_active:
+            print(f"AudioRoutingCoordinator: Route for track {track_index} is inactive, refreshing...")
+            if not self.refresh_track_route(track_index):
+                return False
+            route = self.track_routes.get(track_index)
+            if not route or not route.is_active:
                 return False
         
         # Update last used time

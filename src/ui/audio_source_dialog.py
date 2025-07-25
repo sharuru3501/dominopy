@@ -294,6 +294,7 @@ class AudioSourceDialog(QDialog):
         # Use the stored selected_source_id if it was set by GM instrument selection
         if self.selected_source_id:
             self.source_selected.emit(self.selected_source_id)
+            self._update_audio_routing_realtime(self.selected_source_id)
             self.accept()
             return
         
@@ -302,6 +303,7 @@ class AudioSourceDialog(QDialog):
         if current_item:
             self.selected_source_id = current_item.data(Qt.UserRole)
             self.source_selected.emit(self.selected_source_id)
+            self._update_audio_routing_realtime(self.selected_source_id)
             self.accept()
     
     def get_selected_source_id(self) -> Optional[str]:
@@ -384,11 +386,11 @@ class AudioSourceDialog(QDialog):
         
         # Reinitialize audio routing to apply the new instrument
         if coordinator:
-            setup_success = coordinator.setup_track_route(self.track_index)
+            setup_success = coordinator.refresh_track_route(self.track_index)
             if setup_success:
-                print(f"✅ Track {self.track_index} audio routing reinitialized for GM instrument {program}")
+                print(f"✅ Track {self.track_index} audio routing refreshed for GM instrument {program}")
             else:
-                print(f"❌ Failed to reinitialize audio routing for track {self.track_index}")
+                print(f"❌ Failed to refresh audio routing for track {self.track_index}")
         
         print(f"Track {self.track_index} GM instrument changed to: Program {program} - {get_gm_instrument_name(program)}")
     
@@ -441,11 +443,19 @@ class AudioSourceDialog(QDialog):
                     
                     # Find and select the newly added soundfont
                     filename = os.path.basename(file_path)
+                    new_source_id = None
                     for i in range(self.source_list.count()):
                         item = self.source_list.item(i)
                         if filename in item.text():
                             self.source_list.setCurrentItem(item)
+                            new_source_id = item.data(Qt.UserRole)
                             break
+                    
+                    # Auto-assign newly added soundfont to current track
+                    if new_source_id and self.audio_source_manager:
+                        # Wait a moment for the source to be fully registered
+                        from PySide6.QtCore import QTimer
+                        QTimer.singleShot(100, lambda: self._auto_assign_new_soundfont(new_source_id))
                     
                     QMessageBox.information(
                         self, "Success", 
@@ -555,3 +565,86 @@ class AudioSourceDialog(QDialog):
         
         # 既存の削除メソッドを呼び出し
         self._remove_soundfont(source_id)
+    
+    def _update_audio_routing_realtime(self, source_id: str):
+        """リアルタイムでオーディオルーティングを更新"""
+        try:
+            from src.audio_routing_coordinator import get_audio_routing_coordinator
+            
+            # まず、オーディオソースマネージャーでトラックにソースを割り当て
+            if self.audio_source_manager:
+                assign_success = self.audio_source_manager.assign_source_to_track(self.track_index, source_id)
+                if not assign_success:
+                    print(f"❌ Failed to assign source {source_id} to track {self.track_index}")
+                    return
+                
+                print(f"✅ Assigned source {source_id} to track {self.track_index}")
+            
+            # 次に、オーディオルーティングコーディネーターでルートを更新
+            coordinator = get_audio_routing_coordinator()
+            if coordinator:
+                # 古いルートを無効化して新しいルートをセットアップ
+                refresh_success = coordinator.refresh_track_route(self.track_index)
+                if refresh_success:
+                    print(f"🎵 Track {self.track_index} audio routing updated in real-time")
+                else:
+                    print(f"⚠️ Failed to refresh audio routing for track {self.track_index}")
+            else:
+                print("⚠️ Audio routing coordinator not available")
+                
+            # UIを更新（トラックリストの表示など）
+            self._update_track_display()
+            
+            # Piano Rollにも通知（プレビュー音のため）
+            self._notify_piano_roll_update()
+            
+        except Exception as e:
+            print(f"❌ Error updating audio routing in real-time: {e}")
+    
+    def _update_track_display(self):
+        """トラックリストの表示を更新"""
+        try:
+            # メインウィンドウのトラックリストを更新
+            if hasattr(self.parent(), 'track_list'):
+                self.parent().track_list.update_track_info()
+            
+            # または、直接トラックマネージャーのシグナルを発行
+            from src.track_manager import get_track_manager
+            track_manager = get_track_manager()
+            if track_manager:
+                # トラック情報が変更されたことを通知
+                track_manager.project_changed.emit()
+                
+        except Exception as e:
+            print(f"Warning: Failed to update track display: {e}")
+    
+    def _notify_piano_roll_update(self):
+        """Piano Rollにオーディオソース変更を通知"""
+        try:
+            # メインウィンドウのPiano Rollを探す
+            main_window = self.parent()
+            while main_window and not hasattr(main_window, 'piano_roll'):
+                main_window = main_window.parent()
+            
+            if main_window and hasattr(main_window, 'piano_roll'):
+                # Piano Rollが次回プレビュー音を出すときにルートを再確認するように
+                # 特別なメソッドがあれば呼び出す
+                if hasattr(main_window.piano_roll, '_invalidate_preview_routes'):
+                    main_window.piano_roll._invalidate_preview_routes()
+                print(f"Piano Roll notified of audio source change for track {self.track_index}")
+                
+        except Exception as e:
+            print(f"Warning: Failed to notify Piano Roll: {e}")
+    
+    def _auto_assign_new_soundfont(self, source_id: str):
+        """新しく追加されたサウンドフォントを自動割り当て"""
+        try:
+            if self.audio_source_manager:
+                assign_success = self.audio_source_manager.assign_source_to_track(self.track_index, source_id)
+                if assign_success:
+                    self._update_audio_routing_realtime(source_id)
+                    print(f"✅ Auto-assigned new soundfont {source_id} to track {self.track_index}")
+                else:
+                    print(f"❌ Failed to auto-assign soundfont {source_id} to track {self.track_index}")
+        except Exception as e:
+            print(f"Error in auto-assign: {e}")

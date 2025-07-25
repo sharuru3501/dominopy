@@ -150,6 +150,108 @@ DominoPyは、PySide6を使用したクロスプラットフォーム対応のMI
 - トラック右クリックでの Audio Source 設定機能実装
 - より直感的な UX 改善のためのバージョンアップ
 
+### 2025-07-25: リアルタイムオーディオ機能と右クリック音修正
+**UX改善**: 即座の音響フィードバックとプレビュー機能の完全動作
+
+#### 🎯 修正の背景
+- **即座性の欠如**: サウンドフォント追加後にアプリ再起動が必要
+- **右クリック音問題**: 和音プレビュー機能が動作しない
+- **ユーザビリティ**: 音響フィードバックの即時性改善
+- **デバッグ効率**: 根本原因特定のための段階的解析アプローチ
+
+#### 📋 実装した修正内容
+
+**1. アプリケーション起動時のデフォルトオーディオソース自動割り当て** (`src/ui/main_window.py`)
+- **_auto_assign_default_audio_sources()**: 全トラックに利用可能な最初のサウンドフォントを自動割り当て
+- **_validate_track_audio_assignments()**: TrackManager初期化後の割り当て漏れをチェック・修正
+- **段階的タイミング**: QTimerを使用した適切な初期化順序制御
+- **楽器多様性**: トラックごとに異なるGMプログラム（楽器）を自動割り当て
+
+**2. リアルタイムオーディオルーティング更新** (`src/ui/audio_source_dialog.py`)
+- **_update_audio_routing_realtime()**: オーディオソース変更の即座反映
+- **AudioRoutingCoordinator.refresh_track_route()**: 古いルート無効化と新ルート設定
+- **シームレスUX**: アプリ再起動不要のライブ音響更新
+- **トラック表示更新**: UI要素の自動同期
+
+**3. 右クリック音機能の根本修復** (`src/ui/piano_roll_widget.py`)
+- **古いenum参照削除**: `AudioSourceType.NONE`への参照を完全除去
+- **AttributeError解決**: 右クリック処理時のエラー回避
+- **和音プレビュー復活**: ノート右クリック・空エリア右クリックの両方で音が再生
+- **エラーハンドリング**: `if not track_source:`による適切なnull検証
+
+#### 🛠️ 技術的実装詳細
+
+**問題特定プロセス**
+1. **段階的デバッグ**: テストスクリプトによる機能分離検証
+2. **UIイベント解析**: 実際のmousePressEvent処理の詳細ログ
+3. **エラートレース**: AttributeErrorの正確な発生箇所特定
+4. **回帰防止**: 全ての関連箇所の一括修正
+
+**修正された処理フロー**
+```python
+# 修正前（エラーの原因）
+if track_source and track_source.source_type == AudioSourceType.NONE:
+    return False  # AttributeError発生
+
+# 修正後（正常動作）
+if not track_source:
+    return False  # 適切なnullチェック
+```
+
+**自動割り当てシステム**
+```python
+def _auto_assign_default_audio_sources(self, audio_source_manager):
+    # 利用可能な最初のサウンドフォントを取得
+    default_source = audio_source_manager.get_soundfont_sources()[0]
+    
+    # 全トラック（8個）に割り当て
+    for track_index in range(num_tracks):
+        audio_source_manager.assign_source_to_track(track_index, default_source.id)
+```
+
+#### 🎨 ユーザーエクスペリエンス向上
+
+**即座性の実現**
+- **サウンドフォント追加 → 即座に音が出る**: アプリ再起動不要
+- **右クリック → 即座に和音プレビュー**: ノート・空エリア両対応
+- **トラック切り替え → 即座に楽器変更**: リアルタイム音響フィードバック
+
+**音響フィードバック**
+- **ノート入力クリック**: 音によるフィードバック ✅
+- **Piano Roll鍵盤クリック**: 視覚と音響の統合 ✅  
+- **Virtual Keyboard**: キーボード押下の音響確認 ✅
+- **右クリック和音プレビュー**: 和音の音響確認 ✅
+
+#### 📊 検証結果
+
+**修正前の問題**
+```
+AttributeError: NONE
+Error calling Python override of QWidget::mousePressEvent()
+```
+
+**修正後の正常動作**
+```
+🖱️ MousePressEvent Debug: Right-click processing
+AudioRoutingCoordinator: Note 60 playing on track 0, channel 0
+AudioRoutingCoordinator: Note 64 playing on track 0, channel 0  
+AudioRoutingCoordinator: Note 67 playing on track 0, channel 0
+PianoRoll: Chord preview with 3 notes playing on track 0
+Chord at playhead: C (C, E, G)
+```
+
+#### 🚀 成果
+- **完全なプレビュー機能**: 全ての音響フィードバックが正常動作
+- **即座のUX**: サウンドフォント操作の即時反映
+- **エラー解消**: 右クリック時のクラッシュ問題完全修復
+- **音楽的UX**: 和音検出・表示による音楽理論的フィードバック
+- **開発効率**: 段階的デバッグアプローチによる効率的問題解決
+
+#### 🔄 技術的債務の解消
+- **enum整合性**: AudioSourceType.NONEの完全除去による型安全性向上
+- **初期化順序**: 適切なタイミング制御による安定性向上
+- **エラーハンドリング**: nullチェックの統一による堅牢性向上
+
 ---
 
 ### 2025-07-23: ピアノロールノート編集機能の大幅改善

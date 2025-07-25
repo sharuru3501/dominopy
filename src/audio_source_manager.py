@@ -214,6 +214,9 @@ class AudioSourceManager(QObject):
             except ImportError:
                 pass
         
+        # Emit signal to notify UI of source assignment change
+        self.sources_updated.emit()
+        
         print(f"📌 Assigned {source_id} to track {track_index} (program: {source.program})")
         return True
     

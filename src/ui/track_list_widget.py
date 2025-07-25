@@ -325,7 +325,7 @@ class TrackItemWidget(QFrame):
                     print(f"Track {self.track_index} audio source changed to: {source.name}")
                 
                 # Use a short delay to prevent audio artifacts before reinitializing
-                QTimer.singleShot(50, lambda: self._reinitialize_track_audio(source.name))
+                QTimer.singleShot(50, lambda: self._reinitialize_track_audio_improved(source.name))
             else:
                 print(f"❌ Failed to assign audio source {source_id} to track {self.track_index}")
         else:
@@ -373,6 +373,41 @@ class TrackItemWidget(QFrame):
                 print(f"❌ Failed to initialize audio routing for track {self.track_index}")
         else:
             print("❌ Per-track router not available")
+    
+    def _reinitialize_track_audio_improved(self, source_name: str):
+        """改善されたトラックオーディオのリアルタイム更新"""
+        from src.audio_routing_coordinator import get_audio_routing_coordinator
+        
+        # 統合コーディネーターを使用してリアルタイム更新
+        coordinator = get_audio_routing_coordinator()
+        if coordinator:
+            refresh_success = coordinator.refresh_track_route(self.track_index)
+            if refresh_success:
+                print(f"🎵 Track {self.track_index} audio routing refreshed in real-time for {source_name}")
+                
+                # UIを更新
+                self._update_track_info_display()
+                return
+            else:
+                print(f"⚠️ Failed to refresh audio routing for track {self.track_index}")
+        
+        # フォールバック: 従来の方法
+        self._reinitialize_track_audio(source_name)
+    
+    def _update_track_info_display(self):
+        """トラック情報表示を更新"""
+        try:
+            from src.track_manager import get_track_manager
+            track_manager = get_track_manager()
+            if track_manager:
+                track_info = track_manager.get_track_info(self.track_index)
+                self.update_info(
+                    track_info['note_count'],
+                    track_info.get('program'),
+                    track_info.get('audio_source_name')
+                )
+        except Exception as e:
+            print(f"Warning: Failed to update track info display: {e}")
 
 class TrackListWidget(QWidget):
     """Main track list widget with scrolling support"""
