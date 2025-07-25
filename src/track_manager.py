@@ -386,7 +386,7 @@ class TrackManager(QObject):
         # Get audio source information
         audio_source_manager = get_audio_source_manager()
         audio_source = None
-        audio_source_name = "No Audio Source"
+        audio_source_name = "No Audio"
         gm_instrument_name = "No Instrument" if track.program is None else get_gm_instrument_name(track.program)
         
         if audio_source_manager:
@@ -396,11 +396,7 @@ class TrackManager(QObject):
                 # Handle different audio source types
                 if hasattr(audio_source, 'source_type'):
                     from src.audio_source_manager import AudioSourceType
-                    if audio_source.source_type == AudioSourceType.NONE:
-                        # For "No Audio Source" - track is silent
-                        audio_source_name = "🚫 No Audio Source"
-                        gm_instrument_name = "Silent"
-                    elif audio_source.source_type == AudioSourceType.SOUNDFONT:
+                    if audio_source.source_type == AudioSourceType.SOUNDFONT:
                         if audio_source.program is not None:
                             gm_instrument_name = get_gm_instrument_name(audio_source.program)
                             audio_source_name = f"SF2: {audio_source.name}"

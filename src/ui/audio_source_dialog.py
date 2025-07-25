@@ -5,7 +5,8 @@ Allows users to select audio sources for tracks (soundfonts, external MIDI, etc.
 from typing import Optional, List
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                               QPushButton, QListWidget, QListWidgetItem, QGroupBox,
-                              QButtonGroup, QRadioButton, QTextEdit, QSplitter)
+                              QButtonGroup, QRadioButton, QTextEdit, QSplitter,
+                              QFileDialog, QMessageBox, QMenu)
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QIcon
 
@@ -53,12 +54,26 @@ class AudioSourceDialog(QDialog):
         # Buttons
         button_layout = QHBoxLayout()
         
+        # Left side - Refresh button
         self.refresh_button = QPushButton("🔄 Refresh")
         self.refresh_button.clicked.connect(self.refresh_sources)
         button_layout.addWidget(self.refresh_button)
         
         button_layout.addStretch()
         
+        # Center - Soundfont management buttons
+        self.add_soundfont_button = QPushButton("🎵 Add Soundfont...")
+        self.add_soundfont_button.clicked.connect(self._add_soundfont)
+        button_layout.addWidget(self.add_soundfont_button)
+        
+        self.remove_soundfont_button = QPushButton("🗑️ Remove Soundfont")
+        self.remove_soundfont_button.clicked.connect(self._remove_selected_soundfont)
+        self.remove_soundfont_button.setEnabled(False)  # Initially disabled
+        button_layout.addWidget(self.remove_soundfont_button)
+        
+        button_layout.addStretch()
+        
+        # Right side - Dialog buttons
         self.cancel_button = QPushButton("Cancel")
         self.cancel_button.clicked.connect(self.reject)
         button_layout.addWidget(self.cancel_button)
@@ -79,26 +94,23 @@ class AudioSourceDialog(QDialog):
         # Source type selection
         self.source_type_group = QButtonGroup()
         
-        self.no_audio_radio = QRadioButton("🚫 No Audio Source")
-        self.no_audio_radio.setChecked(True)  # Default to "No Audio Source"
-        self.no_audio_radio.toggled.connect(self.on_source_type_changed)
-        self.source_type_group.addButton(self.no_audio_radio, 0)
-        category_widget.addWidget(self.no_audio_radio)
-        
         self.soundfont_radio = QRadioButton("🎼 Soundfont Files")
+        self.soundfont_radio.setChecked(True)  # Default to "Soundfont Files"
         self.soundfont_radio.toggled.connect(self.on_source_type_changed)
-        self.source_type_group.addButton(self.soundfont_radio, 1)
+        self.source_type_group.addButton(self.soundfont_radio, 0)
         category_widget.addWidget(self.soundfont_radio)
         
         self.midi_radio = QRadioButton("🔌 External MIDI")
         self.midi_radio.toggled.connect(self.on_source_type_changed)
-        self.source_type_group.addButton(self.midi_radio, 2)
+        self.source_type_group.addButton(self.midi_radio, 1)
         category_widget.addWidget(self.midi_radio)
         
         # Source list
         self.source_list = QListWidget()
         self.source_list.itemSelectionChanged.connect(self.on_source_selection_changed)
         self.source_list.itemDoubleClicked.connect(self.accept_selection)
+        self.source_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.source_list.customContextMenuRequested.connect(self._show_source_context_menu)
         category_widget.addWidget(self.source_list)
         
         splitter.addWidget(category_container)
@@ -167,12 +179,7 @@ class AudioSourceDialog(QDialog):
         
         sources = []
         
-        if self.no_audio_radio.isChecked():
-            # No Audio Source
-            no_audio_source = self.audio_source_manager.available_sources.get("no_audio_source")
-            if no_audio_source:
-                sources = [no_audio_source]
-        elif self.soundfont_radio.isChecked():
+        if self.soundfont_radio.isChecked():
             # Soundfont sources
             sources = self.audio_source_manager.get_soundfont_sources()
         elif self.midi_radio.isChecked():
@@ -185,9 +192,7 @@ class AudioSourceDialog(QDialog):
             item.setData(Qt.UserRole, source.id)
             
             # Add icon based on type
-            if source.source_type == AudioSourceType.NONE:
-                item.setText(f"🚫 {source.name}")
-            elif source.source_type == AudioSourceType.SOUNDFONT:
+            if source.source_type == AudioSourceType.SOUNDFONT:
                 item.setText(f"🎼 {source.name}")
             elif source.source_type == AudioSourceType.EXTERNAL_MIDI:
                 item.setText(f"🔌 {source.name}")
@@ -195,17 +200,22 @@ class AudioSourceDialog(QDialog):
                 item.setText(f"🎵 {source.name}")
             
             self.source_list.addItem(item)
+        
+        # 削除ボタンの状態を更新（選択がクリアされたため）
+        self._update_remove_button_state(None)
     
     def on_source_selection_changed(self):
         """Handle source selection change"""
         current_item = self.source_list.currentItem()
         if not current_item:
             self.update_details(None)
+            self._update_remove_button_state(None)
             return
         
         source_id = current_item.data(Qt.UserRole)
         source = self.audio_source_manager.available_sources.get(source_id)
         self.update_details(source)
+        self._update_remove_button_state(source)
     
     def update_details(self, source: Optional[AudioSource]):
         """Update the details panel"""
@@ -220,7 +230,6 @@ class AudioSourceDialog(QDialog):
         
         # Type information
         type_text = {
-            AudioSourceType.NONE: "No Audio Source (Silent)",
             AudioSourceType.SOUNDFONT: "Soundfont File (.sf2)",
             AudioSourceType.EXTERNAL_MIDI: "External MIDI Device"
         }.get(source.source_type, "Unknown")
@@ -231,21 +240,17 @@ class AudioSourceDialog(QDialog):
         info_text = f"Source ID: {source.id}\n"
         info_text += f"Type: {source.source_type.value}\n"
         
-        if source.source_type == AudioSourceType.NONE:
-            info_text += "Description: This track will be silent and produce no audio.\n"
-            info_text += "Use this option when you want the track to have no sound.\n"
-        else:
-            if source.file_path:
-                import os
-                file_size = os.path.getsize(source.file_path) / (1024 * 1024)
-                info_text += f"File: {source.file_path}\n"
-                info_text += f"Size: {file_size:.1f} MB\n"
-            
-            if source.midi_port_name:
-                info_text += f"MIDI Port: {source.midi_port_name}\n"
-            
-            info_text += f"Program: {source.program}\n"
-            info_text += f"Channel: {source.channel}\n"
+        if source.file_path:
+            import os
+            file_size = os.path.getsize(source.file_path) / (1024 * 1024)
+            info_text += f"File: {source.file_path}\n"
+            info_text += f"Size: {file_size:.1f} MB\n"
+        
+        if source.midi_port_name:
+            info_text += f"MIDI Port: {source.midi_port_name}\n"
+        
+        info_text += f"Program: {source.program}\n"
+        info_text += f"Channel: {source.channel}\n"
         
         if source.source_type == AudioSourceType.SOUNDFONT:
             soundfont_info = self.audio_source_manager.get_soundfont_info(source.file_path)
@@ -272,9 +277,7 @@ class AudioSourceDialog(QDialog):
             return
         
         # Select correct radio button
-        if source.source_type == AudioSourceType.NONE:
-            self.no_audio_radio.setChecked(True)
-        elif source.source_type == AudioSourceType.SOUNDFONT:
+        if source.source_type == AudioSourceType.SOUNDFONT:
             self.soundfont_radio.setChecked(True)
         elif source.source_type == AudioSourceType.EXTERNAL_MIDI:
             self.midi_radio.setChecked(True)
@@ -388,3 +391,167 @@ class AudioSourceDialog(QDialog):
                 print(f"❌ Failed to reinitialize audio routing for track {self.track_index}")
         
         print(f"Track {self.track_index} GM instrument changed to: Program {program} - {get_gm_instrument_name(program)}")
+    
+    def _add_soundfont(self):
+        """Open file dialog to add a new soundfont"""
+        import os
+        
+        # Open file dialog for .sf2 files
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Add Soundfont File",
+            os.path.expanduser("~"),
+            "SoundFont Files (*.sf2);;All Files (*)"
+        )
+        
+        if not file_path:
+            return  # User cancelled
+        
+        try:
+            # Check if file exists and is valid
+            if not os.path.exists(file_path):
+                QMessageBox.warning(self, "Error", "Selected file does not exist.")
+                return
+            
+            # Check file size (should be reasonable for a soundfont)
+            file_size = os.path.getsize(file_path)
+            if file_size < 1000:  # Less than 1KB is suspicious
+                QMessageBox.warning(self, "Error", "Selected file appears to be too small to be a valid soundfont.")
+                return
+            
+            if file_size > 500 * 1024 * 1024:  # More than 500MB
+                reply = QMessageBox.question(
+                    self, "Large File", 
+                    f"This soundfont is quite large ({file_size / (1024*1024):.1f} MB). Continue?",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No
+                )
+                if reply != QMessageBox.Yes:
+                    return
+            
+            # Add soundfont to audio source manager
+            if self.audio_source_manager:
+                success = self.audio_source_manager.add_soundfont_file(file_path)
+                if success:
+                    # Refresh the source list to show the new soundfont
+                    self.refresh_sources()
+                    
+                    # Switch to soundfont radio button to show the new source
+                    self.soundfont_radio.setChecked(True)
+                    
+                    # Find and select the newly added soundfont
+                    filename = os.path.basename(file_path)
+                    for i in range(self.source_list.count()):
+                        item = self.source_list.item(i)
+                        if filename in item.text():
+                            self.source_list.setCurrentItem(item)
+                            break
+                    
+                    QMessageBox.information(
+                        self, "Success", 
+                        f"Soundfont '{os.path.basename(file_path)}' has been added successfully!"
+                    )
+                else:
+                    QMessageBox.warning(
+                        self, "Error", 
+                        "Failed to add soundfont. Please check if the file is a valid .sf2 file."
+                    )
+            else:
+                QMessageBox.warning(self, "Error", "Audio source manager not available.")
+                
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"An error occurred while adding the soundfont:\n{str(e)}")
+            print(f"Error adding soundfont: {e}")
+    
+    def _show_source_context_menu(self, position):
+        """ソースリストの右クリックメニューを表示"""
+        item = self.source_list.itemAt(position)
+        if not item:
+            return
+        
+        source_id = item.data(Qt.UserRole)
+        source = self.audio_source_manager.available_sources.get(source_id)
+        
+        if not source:
+            return
+        
+        # サウンドフォントソースの場合のみ削除メニューを表示
+        if source.source_type == AudioSourceType.SOUNDFONT:
+            menu = QMenu(self)
+            
+            remove_action = menu.addAction("🗑️ サウンドフォントを削除")
+            remove_action.triggered.connect(lambda: self._remove_soundfont(source_id))
+            
+            # グローバル座標でメニューを表示
+            menu.exec(self.source_list.mapToGlobal(position))
+    
+    def _remove_soundfont(self, source_id: str):
+        """サウンドフォントを削除"""
+        if not self.audio_source_manager:
+            return
+        
+        source = self.audio_source_manager.available_sources.get(source_id)
+        if not source:
+            return
+        
+        # 確認ダイアログ
+        reply = QMessageBox.question(
+            self, "サウンドフォントを削除", 
+            f"サウンドフォント '{source.name}' を削除しますか？\n\n"
+            f"• ファイルはディスクから完全に削除されます\n"
+            f"• このソースを使用中のトラックは「No Audio Source」に変更されます\n"
+            f"• この操作は元に戻せません",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        
+        if reply != QMessageBox.Yes:
+            return
+        
+        try:
+            # オーディオソースマネージャーから削除
+            success = self.audio_source_manager.remove_soundfont_file(source_id)
+            if success:
+                # UIを更新
+                self.refresh_sources()
+                
+                QMessageBox.information(
+                    self, "削除完了", 
+                    f"サウンドフォント '{source.name}' が正常に削除されました。"
+                )
+            else:
+                QMessageBox.warning(
+                    self, "エラー", 
+                    "サウンドフォントの削除に失敗しました。"
+                )
+                
+        except Exception as e:
+            QMessageBox.critical(self, "エラー", f"サウンドフォント削除中にエラーが発生しました：\n{str(e)}")
+            print(f"Error removing soundfont: {e}")
+    
+    def _update_remove_button_state(self, source: Optional[AudioSource]):
+        """削除ボタンの有効/無効状態を更新"""
+        if hasattr(self, 'remove_soundfont_button'):
+            # サウンドフォントが選択されている場合のみ削除ボタンを有効化
+            if source and source.source_type == AudioSourceType.SOUNDFONT:
+                self.remove_soundfont_button.setEnabled(True)
+                self.remove_soundfont_button.setToolTip(f"サウンドフォント '{source.name}' を削除")
+            else:
+                self.remove_soundfont_button.setEnabled(False)
+                self.remove_soundfont_button.setToolTip("削除するサウンドフォントを選択してください")
+    
+    def _remove_selected_soundfont(self):
+        """選択されたサウンドフォントを削除（ボタンから）"""
+        current_item = self.source_list.currentItem()
+        if not current_item:
+            return
+        
+        source_id = current_item.data(Qt.UserRole)
+        source = self.audio_source_manager.available_sources.get(source_id)
+        
+        if not source or source.source_type != AudioSourceType.SOUNDFONT:
+            QMessageBox.warning(self, "エラー", "削除するサウンドフォントが選択されていません。")
+            return
+        
+        # 既存の削除メソッドを呼び出し
+        self._remove_soundfont(source_id)

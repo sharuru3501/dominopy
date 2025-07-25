@@ -179,6 +179,17 @@ class DominoPyMainWindow(QMainWindow):
         
         audio_menu.addSeparator()
         
+        # Audio Source management
+        audio_source_action = audio_menu.addAction("🎵 &Audio Sources...")
+        audio_source_action.setToolTip("Manage soundfonts and audio sources")
+        audio_source_action.triggered.connect(self._open_audio_source_manager)
+        
+        add_soundfont_action = audio_menu.addAction("➕ &Add Soundfont...")
+        add_soundfont_action.setToolTip("Add a new soundfont (.sf2) file")
+        add_soundfont_action.triggered.connect(self._add_soundfont)
+        
+        audio_menu.addSeparator()
+        
         midi_routing_action = audio_menu.addAction("&MIDI Routing...")
         midi_routing_action.setToolTip("Configure MIDI output routing and external connections")
         midi_routing_action.triggered.connect(self._open_midi_routing)
@@ -1147,6 +1158,97 @@ class DominoPyMainWindow(QMainWindow):
         self.logger.info("   Track01 (Teal): Long harmony notes")
         self.logger.info("   Track02 (Blue): Accent notes")
         self.logger.info("   Track05 (Purple): Low bass notes")
+    
+    def _open_audio_source_manager(self):
+        """オーディオソース管理ダイアログを開く"""
+        from src.ui.audio_source_dialog import AudioSourceDialog
+        from src.track_manager import get_track_manager
+        
+        # アクティブなトラックを取得
+        track_manager = get_track_manager()
+        if track_manager:
+            active_track = track_manager.get_active_track_index()
+        else:
+            active_track = 0
+        
+        # AudioSourceDialogを開く
+        dialog = AudioSourceDialog(active_track, self)
+        dialog.source_selected.connect(self._on_audio_source_selected)
+        dialog.exec()
+    
+    def _add_soundfont(self):
+        """サウンドフォント追加ダイアログを開く"""
+        import os
+        from src.audio_source_manager import get_audio_source_manager
+        
+        # ファイルダイアログでサウンドフォントファイルを選択
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "サウンドフォントを追加",
+            os.path.expanduser("~"),
+            "SoundFont Files (*.sf2);;All Files (*)"
+        )
+        
+        if not file_path:
+            return  # ユーザーがキャンセル
+        
+        try:
+            # ファイルの妥当性チェック
+            if not os.path.exists(file_path):
+                QMessageBox.warning(self, "エラー", "選択されたファイルが存在しません。")
+                return
+            
+            # ファイルサイズチェック
+            file_size = os.path.getsize(file_path)
+            if file_size < 1000:  # 1KB未満は疑わしい
+                QMessageBox.warning(self, "エラー", "選択されたファイルは有効なサウンドフォントファイルには小さすぎます。")
+                return
+            
+            if file_size > 500 * 1024 * 1024:  # 500MB超過
+                reply = QMessageBox.question(
+                    self, "大容量ファイル", 
+                    f"このサウンドフォントは非常に大きいです ({file_size / (1024*1024):.1f} MB)。続行しますか？",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No
+                )
+                if reply != QMessageBox.Yes:
+                    return
+            
+            # オーディオソースマネージャーにサウンドフォントを追加
+            audio_source_manager = get_audio_source_manager()
+            if audio_source_manager:
+                success = audio_source_manager.add_soundfont_file(file_path)
+                if success:
+                    QMessageBox.information(
+                        self, "成功", 
+                        f"サウンドフォント '{os.path.basename(file_path)}' が正常に追加されました！"
+                    )
+                    self.logger.info(f"サウンドフォントが追加されました: {file_path}")
+                else:
+                    QMessageBox.warning(
+                        self, "エラー", 
+                        "サウンドフォントの追加に失敗しました。有効な.sf2ファイルかご確認ください。"
+                    )
+            else:
+                QMessageBox.warning(self, "エラー", "オーディオソースマネージャーが利用できません。")
+                
+        except Exception as e:
+            QMessageBox.critical(self, "エラー", f"サウンドフォント追加中にエラーが発生しました：\n{str(e)}")
+            self.logger.error(f"サウンドフォント追加エラー: {e}")
+    
+    def _on_audio_source_selected(self, source_id: str):
+        """オーディオソース選択時の処理"""
+        from src.audio_source_manager import get_audio_source_manager
+        from src.track_manager import get_track_manager
+        
+        audio_source_manager = get_audio_source_manager()
+        track_manager = get_track_manager()
+        
+        if audio_source_manager and track_manager:
+            active_track = track_manager.get_active_track_index()
+            source = audio_source_manager.available_sources.get(source_id)
+            if source:
+                self.logger.info(f"トラック {active_track} のオーディオソースが {source.name} に変更されました")
     
     def resizeEvent(self, event):
         """Handle window resize events to keep measure bar synchronized"""

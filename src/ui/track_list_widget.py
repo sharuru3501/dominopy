@@ -133,9 +133,10 @@ class TrackItemWidget(QFrame):
         display_name = f"{audio_source_name[:18]}..." if len(audio_source_name) > 18 else audio_source_name
         self.audio_source_label = QLabel(display_name)
         self.audio_source_label.setFont(QFont("Arial", 7))
-        # Set color based on audio source type
-        if "🚫 No Audio Source" in audio_source_name:
+        # Set color based on audio source type  
+        if not audio_source_name or audio_source_name == "None":
             self.audio_source_label.setStyleSheet("color: #FF6B6B;")  # Red color for no audio source
+            self.audio_source_label.setText("No Audio")
         else:
             self.audio_source_label.setStyleSheet("color: #4A90E2;")  # Blue color for audio source
         self.audio_source_label.setToolTip(f"Audio Source: {audio_source_name}")
@@ -198,8 +199,9 @@ class TrackItemWidget(QFrame):
             self.audio_source_label.setToolTip(f"Audio Source: {audio_source_name}")
             
             # Update audio source color based on type
-            if "🚫 No Audio Source" in audio_source_name:
+            if not audio_source_name or audio_source_name == "None":
                 self.audio_source_label.setStyleSheet("color: #FF6B6B;")  # Red color for no audio source
+                self.audio_source_label.setText("No Audio")
             else:
                 self.audio_source_label.setStyleSheet("color: #4A90E2;")  # Blue color for audio source
     

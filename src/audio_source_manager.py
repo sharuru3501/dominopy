@@ -12,7 +12,6 @@ from PySide6.QtCore import QObject, Signal
 
 class AudioSourceType(Enum):
     """Types of audio sources available"""
-    NONE = "none"  # No audio source - silent tracks
     SOUNDFONT = "soundfont"
     EXTERNAL_MIDI = "external_midi"
 
@@ -28,14 +27,12 @@ class AudioSource:
     channel: int = 0  # MIDI channel
     
     def __str__(self):
-        if self.source_type == AudioSourceType.NONE:
-            return f"{self.name} (No Audio)"
-        elif self.source_type == AudioSourceType.SOUNDFONT:
+        if self.source_type == AudioSourceType.SOUNDFONT:
             return f"{self.name} (SF2)"
         elif self.source_type == AudioSourceType.EXTERNAL_MIDI:
             return f"{self.name} (MIDI)"
         else:
-            return f"{self.name} (Internal)"
+            return f"{self.name} (Unknown)"
 
 @dataclass 
 class SoundfontInfo:
@@ -180,16 +177,8 @@ class AudioSourceManager(QObject):
     
     def _create_default_sources(self):
         """Create default internal audio sources"""
-        # No Audio Source - for silent tracks
-        no_audio_source = AudioSource(
-            id="no_audio_source",
-            name="No Audio Source",
-            source_type=AudioSourceType.NONE,
-            program=None,  # No program for silent tracks
-            channel=0
-        )
-        
-        self.available_sources["no_audio_source"] = no_audio_source
+        # No default sources - users must add soundfonts manually
+        pass
     
     def get_available_sources(self) -> List[AudioSource]:
         """Get list of all available audio sources"""
@@ -259,18 +248,12 @@ class AudioSourceManager(QObject):
                     midi_port_name=None
                 )
         
-        # Default to "No Audio Source" - tracks start silent
-        default_source = self.available_sources.get("no_audio_source")
-        if default_source:
-            return default_source
-        
-        # Fallback to internal FluidSynth if no_audio_source is not available
-        fallback_source = self.available_sources.get("internal_fluidsynth")
-        return fallback_source
+        # No default source - return None if no source is assigned
+        return None
     
-    def get_track_source_id(self, track_index: int) -> str:
+    def get_track_source_id(self, track_index: int) -> Optional[str]:
         """Get the source ID assigned to a track"""
-        return self.track_sources.get(track_index, "no_audio_source")
+        return self.track_sources.get(track_index, None)
     
     def refresh_sources(self):
         """Refresh the list of available audio sources"""
@@ -291,8 +274,130 @@ class AudioSourceManager(QObject):
         """Validate track assignments and set defaults for unassigned tracks"""
         for track_index in range(max_tracks):
             if track_index not in self.track_sources:
-                # Assign "No Audio Source" as default - tracks start silent
-                self.track_sources[track_index] = "no_audio_source"
+                # No default assignment - tracks start without audio source
+                pass
+    
+    def add_soundfont_file(self, file_path: str) -> bool:
+        """Add a new soundfont file to the available sources"""
+        import shutil
+        
+        try:
+            if not os.path.exists(file_path):
+                print(f"Soundfont file not found: {file_path}")
+                return False
+            
+            if not file_path.lower().endswith('.sf2'):
+                print(f"Invalid soundfont file extension: {file_path}")
+                return False
+            
+            # Get filename and create destination path
+            filename = os.path.basename(file_path)
+            destination_path = os.path.join(self.soundfont_directory, filename)
+            
+            # Check if file already exists
+            if os.path.exists(destination_path):
+                print(f"Soundfont already exists: {filename}")
+                # Still return True as it's technically available
+                return True
+            
+            # Ensure soundfont directory exists
+            os.makedirs(self.soundfont_directory, exist_ok=True)
+            
+            # Copy file to soundfonts directory
+            shutil.copy2(file_path, destination_path)
+            print(f"Copied soundfont to: {destination_path}")
+            
+            # Create soundfont info and audio source
+            file_name = os.path.basename(destination_path)
+            name = os.path.splitext(file_name)[0]
+            size = os.path.getsize(destination_path)
+            
+            # Create soundfont info
+            soundfont_info = SoundfontInfo(
+                file_path=destination_path,
+                name=name,
+                size=size,
+                programs=list(range(128))  # Assume all 128 GM programs available
+            )
+            
+            self.soundfonts[destination_path] = soundfont_info
+            
+            # Create default audio source for this soundfont
+            source_id = f"soundfont_{name.lower().replace(' ', '_')}"
+            source = AudioSource(
+                id=source_id,
+                name=name,
+                source_type=AudioSourceType.SOUNDFONT,
+                file_path=destination_path,
+                program=0,  # Default to piano
+                channel=0
+            )
+            
+            self.available_sources[source_id] = source
+            
+            # Emit signals
+            self.sources_updated.emit()
+            self.soundfont_loaded.emit(destination_path)
+            
+            print(f"Successfully added soundfont: {name}")
+            return True
+            
+        except Exception as e:
+            print(f"Error adding soundfont {file_path}: {e}")
+            return False
+    
+    def remove_soundfont_file(self, source_id: str) -> bool:
+        """サウンドフォントファイルを削除する"""
+        import os
+        
+        try:
+            # ソースが存在するか確認
+            if source_id not in self.available_sources:
+                print(f"Audio source not found: {source_id}")
+                return False
+            
+            source = self.available_sources[source_id]
+            
+            # サウンドフォントタイプかチェック
+            if source.source_type != AudioSourceType.SOUNDFONT:
+                print(f"Source {source_id} is not a soundfont")
+                return False
+            
+            file_path = source.file_path
+            if not file_path or not os.path.exists(file_path):
+                print(f"Soundfont file not found: {file_path}")
+                # ファイルが見つからなくてもソースは削除
+            else:
+                # ファイルを削除
+                os.remove(file_path)
+                print(f"Deleted soundfont file: {file_path}")
+            
+            # available_sourcesから削除
+            del self.available_sources[source_id]
+            
+            # soundfontsからも削除
+            if file_path in self.soundfonts:
+                del self.soundfonts[file_path]
+            
+            # このソースを使用しているトラックがあれば割り当てを削除
+            tracks_to_update = []
+            for track_index, assigned_source_id in self.track_sources.items():
+                if assigned_source_id == source_id:
+                    tracks_to_update.append(track_index)
+            
+            for track_index in tracks_to_update:
+                del self.track_sources[track_index]
+                print(f"Track {track_index} audio source assignment removed")
+            
+            # シグナルを発信
+            self.sources_updated.emit()
+            
+            print(f"Successfully removed soundfont: {source.name}")
+            return True
+            
+        except Exception as e:
+            print(f"Error removing soundfont {source_id}: {e}")
+            return False
 
 # Global audio source manager instance
 _audio_source_manager: Optional[AudioSourceManager] = None

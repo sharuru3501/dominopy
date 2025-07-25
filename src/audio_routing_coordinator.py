@@ -125,10 +125,7 @@ class AudioRoutingCoordinator:
             print(f"AudioRoutingCoordinator: No audio source for track {track_index}")
             return False
         
-        # Check if audio source is "No Audio Source" - skip routing for silent tracks
-        if audio_source.source_type == AudioSourceType.NONE:
-            print(f"AudioRoutingCoordinator: Track {track_index} has no audio source - skipping route setup")
-            return False
+        # Audio source found - proceed with routing setup
         
         # Check if audio source has a valid program (instrument)
         if audio_source.program is None:
