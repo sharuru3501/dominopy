@@ -6,6 +6,64 @@ DominoPyは、PySide6を使用したクロスプラットフォーム対応のMI
 
 ## 開発履歴
 
+### 2025-07-24: プロジェクト名変更とリリース準備
+**ブランディング戦略**: PyDomino から DominoPy への統一的な名前変更
+
+#### 🎯 変更の背景
+- **名前衝突の回避**: 既存のpydomino（ドミノ・ピザAPIラッパー）との差別化
+- **ブランディング統一**: Python + Domino の組み合わせを明確化
+- **親しみやすさ**: 「ドミノパイ」という響きによる親しみやすさ向上
+- **検索性向上**: ユニークな名前による検索時の識別性向上
+
+#### 📋 実施した変更内容
+
+**1. インフラストラクチャ変更**
+- **GitHubリポジトリ名**: `pydomino` → `dominopy`
+- **PyInstallerファイル**: `PyDomino.spec` → `DominoPy.spec`
+- **アプリケーションバンドル**: `PyDomino.app` → `DominoPy.app`
+- **Bundle ID**: `app.pydomino.PyDomino` → `app.dominopy.DominoPy`
+
+**2. ユーザーインターフェース更新**
+- **ウィンドウタイトル**: 全て「DominoPy」に統一
+- **アプリケーション名**: macOSメニューバーでの表示名変更
+- **クラス名**: `PyDominoMainWindow` → `DominoPyMainWindow`
+- **ステータスバー**: `PyDominoStatusBar` → `DominoPyStatusBar`
+
+**3. システムレベル変更**
+- **Application Support パス**: `~/Library/Application Support/PyDomino/` → `~/Library/Application Support/DominoPy/`
+- **MIDI仮想ポート名**: "PyDomino Output" → "DominoPy Output"
+- **ドメイン設定**: `pydomino.app` → `dominopy.app`
+
+**4. コードベース全体更新**
+- **コメント・docstring**: 全てのPython ファイル内の参照を更新
+- **テストファイル**: 全てのテストコード内の参照を更新
+- **ビルドスクリプト**: 全ての実行スクリプトの参照を更新
+
+**5. ドキュメンテーション更新**
+- **README.md**: プロジェクト説明とセットアップ手順を更新
+- **LICENSE**: 著作権者名を「DominoPy Contributors」に変更
+- **BUILD_INSTRUCTIONS.md**: ビルド手順を新しい名前に更新
+- **docs/**: 全てのMarkdownファイルの参照を更新
+- **soundfonts/README.md**: セットアップガイドを更新
+
+#### 🚀 リリース成果
+- **GitHub Release**: DominoPy v1.0.0-macOS を正式リリース
+- **配布ファイル**: `DominoPy-v1.0.0-macos.zip` (207MB)
+- **クリーンビルド**: 空のsoundfontsフォルダ付きで配布
+- **ユーザーガイド**: 正確なセットアップ手順（トラック名ダブルクリック）を記載
+
+#### 📊 技術的影響
+- **互換性**: 既存の設定ファイルとの互換性は一時的に失われる
+- **移行**: ユーザーは新しいApplication Supportパスに手動移行が必要
+- **識別性**: プロジェクトの一意性が確保され、混同リスクが解消
+
+#### 🔄 次のステップ
+- Audio メニューからのサウンドフォント設定機能実装
+- トラック右クリックでの Audio Source 設定機能実装
+- より直感的な UX 改善のためのバージョンアップ
+
+---
+
 ### 2025-07-23: ピアノロールノート編集機能の大幅改善
 **UI/UX革新**: グリッドスナップ制御とダイレクトノート操作の実現
 
